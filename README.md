@@ -1,0 +1,1 @@
+# samrt_home
