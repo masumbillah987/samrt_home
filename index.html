@@ -29,8 +29,9 @@
 <body>
 
 <div class="container">
-    <h2 style="text-align:center;">Smart Home</h2>
+    <h2 style="text-align:center;">Smart Home 🏠</h2>
     
+    <!-- FAN CONTROL -->
     <div class="card">
         <div style="display:flex; justify-content:center; margin-bottom:15px;">
             <svg id="fanIcon" class="fan-icon" width="60" height="60" viewBox="0 0 100 100">
@@ -39,19 +40,50 @@
         </div>
         <div class="title">Fan Control <span id="speedVal">50%</span></div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <button id="btnFanOn" onclick="sendMQTT('FAN_ON')">ON</button>
-            <button id="btnFanOff" onclick="sendMQTT('FAN_OFF')">OFF</button>
+            <button id="btnFanOn" onclick="toggleFan(true)">ON</button>
+            <button id="btnFanOff" onclick="toggleFan(false)">OFF</button>
         </div>
-        <input type="range" id="fanSlider" min="0" max="100" value="50" oninput="document.getElementById('speedVal').textContent = this.value + '%'" onchange="sendMQTT('SPEED_' + this.value)">
+        <input type="range" id="fanSlider" min="0" max="100" value="50" oninput="updateFanSpeed(this.value)" onchange="sendMQTT('SPEED_' + this.value)">
     </div>
 
+    <!-- LIVING ROOM LIGHT -->
     <div class="card">
         <div class="title">Living Room</div>
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-            <svg id="l1Icon" class="light-icon" width="30" height="30" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7z"/></svg>
+            <svg id="l1Icon" class="light-icon" width="30" height="30" viewBox="0 0 24 24">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm0 18c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm6-12H6V9h12v7z"/>
+            </svg>
             <div style="display:flex; gap:10px; width:60%;">
-                <button id="btnL1On" onclick="sendMQTT('L1_ON')">ON</button>
-                <button id="btnL1Off" onclick="sendMQTT('L1_OFF')">OFF</button>
+                <button id="btnL1On" onclick="toggleLight('L1', true)">ON</button>
+                <button id="btnL1Off" onclick="toggleLight('L1', false)">OFF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- BEDROOM LIGHT -->
+    <div class="card">
+        <div class="title">Bedroom</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+            <svg id="l2Icon" class="light-icon" width="30" height="30" viewBox="0 0 24 24">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm0 18c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm6-12H6V9h12v7z"/>
+            </svg>
+            <div style="display:flex; gap:10px; width:60%;">
+                <button id="btnL2On" onclick="toggleLight('L2', true)">ON</button>
+                <button id="btnL2Off" onclick="toggleLight('L2', false)">OFF</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- KITCHEN LIGHT -->
+    <div class="card">
+        <div class="title">Kitchen</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+            <svg id="l3Icon" class="light-icon" width="30" height="30" viewBox="0 0 24 24">
+                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm0 18c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm6-12H6V9h12v7z"/>
+            </svg>
+            <div style="display:flex; gap:10px; width:60%;">
+                <button id="btnL3On" onclick="toggleLight('L3', true)">ON</button>
+                <button id="btnL3Off" onclick="toggleLight('L3', false)">OFF</button>
             </div>
         </div>
     </div>
@@ -59,28 +91,65 @@
 
 <script>
     const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "web_" + Math.random().toString(16).substr(2,8));
+    
+    let state = {
+        fanEnabled: false,
+        fanSpeed: 50,
+        light1State: false,
+        light2State: false,
+        light3State: false
+    };
 
     client.onMessageArrived = (msg) => {
         const d = JSON.parse(msg.payloadString);
-        
-        // Update Fan
-        document.getElementById("fanIcon").className = d.fanEnabled ? "fan-icon spinning" : "fan-icon";
-        document.getElementById("btnFanOn").className = d.fanEnabled ? "active-on" : "";
-        document.getElementById("btnFanOff").className = !d.fanEnabled ? "active-off" : "";
-        document.getElementById("fanSlider").value = d.fanSpeed;
-        document.getElementById("speedVal").textContent = d.fanSpeed + "%";
-
-        // Update Light
-        document.getElementById("l1Icon").className = d.light1State ? "light-icon glow" : "light-icon";
-        document.getElementById("btnL1On").className = d.light1State ? "active-on" : "";
-        document.getElementById("btnL1Off").className = !d.light1State ? "active-off" : "";
+        state = { ...state, ...d };
+        updateUI();
     };
 
     client.connect({ useSSL: true, onSuccess: () => { client.subscribe("myuniquehome/status"); }});
+    
     function sendMQTT(cmd) {
         let msg = new Paho.MQTT.Message(cmd);
         msg.destinationName = "myuniquehome/control";
         client.send(msg);
+    }
+
+    function toggleFan(on) {
+        state.fanEnabled = on;
+        sendMQTT(on ? 'FAN_ON' : 'FAN_OFF');
+        updateUI();
+    }
+
+    function updateFanSpeed(value) {
+        state.fanSpeed = value;
+        document.getElementById('speedVal').textContent = value + '%';
+    }
+
+    function toggleLight(light, on) {
+        const stateKey = light === 'L1' ? 'light1State' : light === 'L2' ? 'light2State' : 'light3State';
+        state[stateKey] = on;
+        sendMQTT(light + (on ? '_ON' : '_OFF'));
+        updateUI();
+    }
+
+    function updateUI() {
+        // Update Fan
+        document.getElementById("fanIcon").className = state.fanEnabled ? "fan-icon spinning" : "fan-icon";
+        document.getElementById("btnFanOn").className = state.fanEnabled ? "active-on" : "";
+        document.getElementById("btnFanOff").className = !state.fanEnabled ? "active-off" : "";
+        document.getElementById("fanSlider").value = state.fanSpeed;
+        document.getElementById("speedVal").textContent = state.fanSpeed + "%";
+
+        // Update Lights
+        updateLightUI('l1', 'btnL1On', 'btnL1Off', state.light1State);
+        updateLightUI('l2', 'btnL2On', 'btnL2Off', state.light2State);
+        updateLightUI('l3', 'btnL3On', 'btnL3Off', state.light3State);
+    }
+
+    function updateLightUI(iconId, onBtnId, offBtnId, isOn) {
+        document.getElementById(iconId + "Icon").className = isOn ? "light-icon glow" : "light-icon";
+        document.getElementById(onBtnId).className = isOn ? "active-on" : "";
+        document.getElementById(offBtnId).className = !isOn ? "active-off" : "";
     }
 </script>
 </body>
