@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Home Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         :root { --bg: #0f172a; --card: #1e293b; --accent: #38bdf8; --on: #22c55e; --off: #ef4444; }
         * {margin:0; padding:0; box-sizing:border-box;}
@@ -38,8 +39,9 @@
         input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #22c55e; cursor: pointer; border: none; box-shadow: 0 0 8px rgba(34,197,94,0.5); }
         input[type=range]:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        .wifi-btn { background: #f59e0b !important; width: 100%; padding: 12px; margin-top: 10px; }
-        .wifi-btn:hover { background: #d97706 !important; }
+        .connection-status { text-align: center; font-size: 12px; padding: 8px; margin-top: 10px; border-radius: 8px; background: #0f172a; }
+        .connected { color: var(--on); }
+        .disconnected { color: var(--off); }
     </style>
 </head>
 <body>
@@ -61,13 +63,13 @@
         </div>
         <div class="status-text" id="fanStatus">Fan is OFF</div>
         <div class="button-group">
-            <button id="btnFanOn" onclick="updateState('on')">ON</button>
-            <button id="btnFanOff" class="active-off" onclick="updateState('off')">OFF</button>
+            <button id="btnFanOn" onclick="sendMQTT('FAN_ON')">ON</button>
+            <button id="btnFanOff" class="active-off" onclick="sendMQTT('FAN_OFF')">OFF</button>
         </div>
         
         <div class="slider-container">
             <div class="slider-label"><span>Speed</span><span id="speedLabel">50%</span></div>
-            <input type="range" id="fanSlider" min="0" max="100" value="50" disabled onchange="handleSliderChange(this.value)">
+            <input type="range" id="fanSlider" min="0" max="100" value="50" disabled oninput="document.getElementById('speedLabel').textContent = this.value + '%'" onchange="sendMQTT('SPEED_' + this.value)">
         </div>
     </div>
 
@@ -79,8 +81,8 @@
         <div class="light-item">
             <div class="light-label" id="light1Status">🏠 Light 1: OFF</div>
             <div class="button-group">
-                <button id="btnL1On" onclick="updateState('l1on')">ON</button>
-                <button id="btnL1Off" class="active-off" onclick="updateState('l1off')">OFF</button>
+                <button id="btnL1On" onclick="sendMQTT('L1_ON')">ON</button>
+                <button id="btnL1Off" class="active-off" onclick="sendMQTT('L1_OFF')">OFF</button>
             </div>
         </div>
 
@@ -88,75 +90,75 @@
         <div class="light-item">
             <div class="light-label" id="light2Status">🛏️ Light 2: OFF</div>
             <div class="button-group">
-                <button id="btnL2On" onclick="updateState('l2on')">ON</button>
-                <button id="btnL2Off" class="active-off" onclick="updateState('l2off')">OFF</button>
+                <button id="btnL2On" onclick="sendMQTT('L2_ON')">ON</button>
+                <button id="btnL2Off" class="active-off" onclick="sendMQTT('L2_OFF')">OFF</button>
             </div>
         </div>
     </div>
 
-    <!-- WIFI SETTINGS CARD -->
-    <div class="card">
-        <button class="wifi-btn" onclick="location.href='/wifi'">⚙️ WiFi Settings</button>
+    <!-- CONNECTION STATUS -->
+    <div class="connection-status" id="connectionStatus" class="disconnected">
+        🔴 Connecting to MQTT...
     </div>
 </div>
 
 <script>
+    // MQTT Configuration
+    const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "web_" + Math.random().toString(16).substr(2,8));
+
     let currentState = {
         fanEnabled: false,
         fanSpeed: 50,
         light1State: false,
         light2State: false
     };
-    
-    let isUpdatingSlider = false;
 
-    // Update state from server
-    async function updateState(action) {
-        try {
-            const response = await fetch('/api/' + action);
-            if(response.ok) {
-                const data = await response.json();
-                currentState = data;
-                updateUI(data);
-            }
-        } catch(e) {
-            console.error('Error:', e);
-        }
-    }
+    // MQTT Message Handler
+    client.onMessageArrived = (msg) => {
+        const d = JSON.parse(msg.payloadString);
+        
+        currentState = {
+            fanEnabled: d.fanEnabled,
+            fanSpeed: d.fanSpeed,
+            light1State: d.light1State,
+            light2State: d.light2State
+        };
+        
+        updateUI(d);
+    };
 
-    // Handle slider change with smooth transitions
-    async function handleSliderChange(val) {
-        if(isUpdatingSlider) return;
-        isUpdatingSlider = true;
-        
-        let target = parseInt(val);
-        let diff = target - currentState.fanSpeed;
-        let steps = Math.ceil(Math.abs(diff) / 5);
-        let action = diff > 0 ? 'up' : 'down';
-        
-        document.getElementById('speedLabel').textContent = target + '%';
-        
-        // Send multiple requests to reach target
-        for(let i = 0; i < steps; i++) {
-            try {
-                await fetch('/api/' + action);
-                await new Promise(r => setTimeout(r, 100)); // Small delay between requests
-            } catch(e) {
-                console.error('Error in slider:', e);
-            }
+    // MQTT Connection Handler
+    client.onConnectionLost = (responseObject) => {
+        if (responseObject.errorCode !== 0) {
+            console.log("Connection lost: " + responseObject.errorMessage);
         }
-        
-        // Get final state
+        updateConnectionStatus(false);
+    };
+
+    // Connect to MQTT
+    client.connect({ 
+        useSSL: true, 
+        onSuccess: () => { 
+            console.log("Connected to MQTT");
+            updateConnectionStatus(true);
+            client.subscribe("myuniquehome/status");
+        },
+        onFailure: (error) => {
+            console.error("Connection failed:", error);
+            updateConnectionStatus(false);
+        }
+    });
+
+    // Send MQTT Command
+    function sendMQTT(cmd) {
         try {
-            const res = await fetch('/api/status');
-            const data = await res.json();
-            currentState = data;
-            updateUI(data);
+            let msg = new Paho.MQTT.Message(cmd);
+            msg.destinationName = "myuniquehome/control";
+            client.send(msg);
+            console.log("Sent: " + cmd);
         } catch(e) {
-            console.error('Error getting status:', e);
+            console.error("Error sending MQTT:", e);
         }
-        
-        isUpdatingSlider = false;
     }
 
     // Update UI based on state
@@ -182,10 +184,8 @@
         }
         
         // Update Fan Speed
-        if(!isUpdatingSlider) {
-            document.getElementById('fanSlider').value = data.fanSpeed;
-            document.getElementById('speedLabel').textContent = data.fanSpeed + '%';
-        }
+        document.getElementById('fanSlider').value = data.fanSpeed;
+        document.getElementById('speedLabel').textContent = data.fanSpeed + '%';
 
         // Update Light 1 UI
         const l1Icon = document.getElementById('light1Status');
@@ -222,37 +222,17 @@
         }
     }
 
-    // Listen for IR remote changes (long polling)
-    async function listenForIRChanges() {
-        while(true) {
-            try {
-                const response = await fetch('/api/changed');
-                if(response.ok) {
-                    const data = await response.json();
-                    if(data.changed) {
-                        currentState = data;
-                        updateUI(data);
-                    }
-                }
-            } catch(e) {
-                console.error('Error listening for changes:', e);
-            }
-            await new Promise(r => setTimeout(r, 500)); // Wait before next poll
+    // Update connection status display
+    function updateConnectionStatus(connected) {
+        const status = document.getElementById('connectionStatus');
+        if(connected) {
+            status.textContent = '🟢 Connected to MQTT';
+            status.className = 'connection-status connected';
+        } else {
+            status.textContent = '🔴 Disconnected from MQTT';
+            status.className = 'connection-status disconnected';
         }
     }
-
-    // Initialize on page load
-    window.addEventListener('load', async () => {
-        try {
-            const response = await fetch('/api/status');
-            const data = await response.json();
-            currentState = data;
-            updateUI(data);
-            listenForIRChanges(); // Start listening for IR changes
-        } catch(e) {
-            console.error('Error initializing:', e);
-        }
-    });
 </script>
 </body>
 </html>
