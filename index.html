@@ -42,69 +42,139 @@
         .connection-status { text-align: center; font-size: 12px; padding: 8px; margin-top: 10px; border-radius: 8px; background: #0f172a; }
         .connected { color: var(--on); }
         .disconnected { color: var(--off); }
+
+        /* LOGIN PAGE STYLES */
+        .login-page { display: none; }
+        .login-page.active { display: flex; }
+        .login-container { width: 100%; max-width: 380px; }
+        .login-form { display: flex; flex-direction: column; gap: 12px; }
+        input[type="text"], input[type="password"], input[type="number"] { 
+            width: 100%; padding: 12px; border: 2px solid #334155; background: #0f172a; border-radius: 10px; font-size: 14px; transition: 0.3s; color: #fff; 
+        }
+        input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus { 
+            outline: none; border-color: #60a5fa; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2); 
+        }
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-group label { font-size: 12px; font-weight: 600; color: #94a3b8; }
+        .login-btn { background: #f59e0b !important; padding: 12px; margin-top: 10px; font-weight: 600; }
+        .login-btn:hover { background: #d97706 !important; }
+        .logout-btn { background: #ef4444 !important; font-size: 12px; padding: 8px; margin-top: 10px; }
+
+        .dashboard-page { display: flex; flex-direction: column; gap: 15px; }
+        .dashboard-page.hidden { display: none; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1 class="header">⚙️ Smart Home</h1>
-    
-    <!-- FAN CONTROL CARD -->
-    <div class="card">
-        <div class="card-title">🌬️ Fan Control</div>
-        <div class="fan-container">
-            <svg id="fanIcon" class="fan-icon" viewBox="0 0 100 100">
-                <circle cx="50" cy="50" r="6" fill="white"/>
-                <path d="M50 10 Q70 30 50 50 Q30 30 50 10"/>
-                <path d="M90 50 Q70 70 50 50 Q70 30 90 50"/>
-                <path d="M50 90 Q30 70 50 50 Q70 70 50 90"/>
-                <path d="M10 50 Q30 30 50 50 Q30 70 10 50"/>
-            </svg>
-        </div>
-        <div class="status-text" id="fanStatus">Fan is OFF</div>
-        <div class="button-group">
-            <button id="btnFanOn" onclick="sendMQTT('FAN_ON')">ON</button>
-            <button id="btnFanOff" class="active-off" onclick="sendMQTT('FAN_OFF')">OFF</button>
-        </div>
+<!-- LOGIN PAGE -->
+<div class="login-page active" id="loginPage">
+    <div class="login-container">
+        <h1 class="header">🔐 Smart Home Login</h1>
         
-        <div class="slider-container">
-            <div class="slider-label"><span>Speed</span><span id="speedLabel">50%</span></div>
-            <input type="range" id="fanSlider" min="0" max="100" value="50" disabled oninput="document.getElementById('speedLabel').textContent = this.value + '%'" onchange="sendMQTT('SPEED_' + this.value)">
-        </div>
-    </div>
+        <div class="card">
+            <div class="card-title">MQTT Configuration</div>
+            
+            <div class="login-form">
+                <div class="form-group">
+                    <label>MQTT Broker Address</label>
+                    <input type="text" id="mqttBroker" placeholder="broker.hivemq.com" value="broker.hivemq.com">
+                </div>
 
-    <!-- LIGHTS CONTROL CARD -->
-    <div class="card">
-        <div class="card-title">💡 Lights Control</div>
-        
-        <!-- Light 1 -->
-        <div class="light-item">
-            <div class="light-label" id="light1Status">🏠 Light 1: OFF</div>
-            <div class="button-group">
-                <button id="btnL1On" onclick="sendMQTT('L1_ON')">ON</button>
-                <button id="btnL1Off" class="active-off" onclick="sendMQTT('L1_OFF')">OFF</button>
+                <div class="form-group">
+                    <label>MQTT Port</label>
+                    <input type="number" id="mqttPort" placeholder="8884" value="8884">
+                </div>
+
+                <div class="form-group">
+                    <label>Status Topic</label>
+                    <input type="text" id="statusTopic" placeholder="myuniquehome/status" value="myuniquehome/status">
+                </div>
+
+                <div class="form-group">
+                    <label>Control Topic</label>
+                    <input type="text" id="controlTopic" placeholder="myuniquehome/control" value="myuniquehome/control">
+                </div>
+
+                <button class="login-btn" onclick="connectMQTT()">🚀 Connect</button>
             </div>
         </div>
 
-        <!-- Light 2 -->
-        <div class="light-item">
-            <div class="light-label" id="light2Status">🛏️ Light 2: OFF</div>
-            <div class="button-group">
-                <button id="btnL2On" onclick="sendMQTT('L2_ON')">ON</button>
-                <button id="btnL2Off" class="active-off" onclick="sendMQTT('L2_OFF')">OFF</button>
-            </div>
+        <div style="text-align: center; font-size: 12px; color: #94a3b8; margin-top: 15px;">
+            Configure your unique MQTT settings to get started
         </div>
     </div>
+</div>
 
-    <!-- CONNECTION STATUS -->
-    <div class="connection-status" id="connectionStatus" class="disconnected">
-        🔴 Connecting to MQTT...
+<!-- DASHBOARD PAGE -->
+<div class="dashboard-page hidden" id="dashboardPage">
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h1 class="header">⚙️ Smart Home</h1>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+        
+        <!-- FAN CONTROL CARD -->
+        <div class="card">
+            <div class="card-title">🌬️ Fan Control</div>
+            <div class="fan-container">
+                <svg id="fanIcon" class="fan-icon" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="6" fill="white"/>
+                    <path d="M50 10 Q70 30 50 50 Q30 30 50 10"/>
+                    <path d="M90 50 Q70 70 50 50 Q70 30 90 50"/>
+                    <path d="M50 90 Q30 70 50 50 Q70 70 50 90"/>
+                    <path d="M10 50 Q30 30 50 50 Q30 70 10 50"/>
+                </svg>
+            </div>
+            <div class="status-text" id="fanStatus">Fan is OFF</div>
+            <div class="button-group">
+                <button id="btnFanOn" onclick="sendMQTT('FAN_ON')">ON</button>
+                <button id="btnFanOff" class="active-off" onclick="sendMQTT('FAN_OFF')">OFF</button>
+            </div>
+            
+            <div class="slider-container">
+                <div class="slider-label"><span>Speed</span><span id="speedLabel">50%</span></div>
+                <input type="range" id="fanSlider" min="0" max="100" value="50" disabled oninput="document.getElementById('speedLabel').textContent = this.value + '%'" onchange="sendMQTT('SPEED_' + this.value)">
+            </div>
+        </div>
+
+        <!-- LIGHTS CONTROL CARD -->
+        <div class="card">
+            <div class="card-title">💡 Lights Control</div>
+            
+            <!-- Light 1 -->
+            <div class="light-item">
+                <div class="light-label" id="light1Status">🏠 Light 1: OFF</div>
+                <div class="button-group">
+                    <button id="btnL1On" onclick="sendMQTT('L1_ON')">ON</button>
+                    <button id="btnL1Off" class="active-off" onclick="sendMQTT('L1_OFF')">OFF</button>
+                </div>
+            </div>
+
+            <!-- Light 2 -->
+            <div class="light-item">
+                <div class="light-label" id="light2Status">🛏️ Light 2: OFF</div>
+                <div class="button-group">
+                    <button id="btnL2On" onclick="sendMQTT('L2_ON')">ON</button>
+                    <button id="btnL2Off" class="active-off" onclick="sendMQTT('L2_OFF')">OFF</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONNECTION STATUS -->
+        <div class="connection-status" id="connectionStatus" class="disconnected">
+            🔴 Connecting to MQTT...
+        </div>
     </div>
 </div>
 
 <script>
-    // MQTT Configuration
-    const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "web_" + Math.random().toString(16).substr(2,8));
+    let client = null;
+    let mqttConfig = {
+        broker: "broker.hivemq.com",
+        port: 8884,
+        statusTopic: "myuniquehome/status",
+        controlTopic: "myuniquehome/control"
+    };
 
     let currentState = {
         fanEnabled: false,
@@ -113,47 +183,108 @@
         light2State: false
     };
 
-    // MQTT Message Handler
-    client.onMessageArrived = (msg) => {
-        const d = JSON.parse(msg.payloadString);
-        
-        currentState = {
-            fanEnabled: d.fanEnabled,
-            fanSpeed: d.fanSpeed,
-            light1State: d.light1State,
-            light2State: d.light2State
-        };
-        
-        updateUI(d);
-    };
-
-    // MQTT Connection Handler
-    client.onConnectionLost = (responseObject) => {
-        if (responseObject.errorCode !== 0) {
-            console.log("Connection lost: " + responseObject.errorMessage);
+    // Load saved config from localStorage
+    function loadConfig() {
+        const saved = localStorage.getItem('mqttConfig');
+        if(saved) {
+            mqttConfig = JSON.parse(saved);
+            document.getElementById('mqttBroker').value = mqttConfig.broker;
+            document.getElementById('mqttPort').value = mqttConfig.port;
+            document.getElementById('statusTopic').value = mqttConfig.statusTopic;
+            document.getElementById('controlTopic').value = mqttConfig.controlTopic;
+            // Auto-connect if config exists
+            connectMQTT();
         }
-        updateConnectionStatus(false);
-    };
+    }
+
+    // Save config to localStorage
+    function saveConfig() {
+        localStorage.setItem('mqttConfig', JSON.stringify(mqttConfig));
+    }
 
     // Connect to MQTT
-    client.connect({ 
-        useSSL: true, 
-        onSuccess: () => { 
-            console.log("Connected to MQTT");
-            updateConnectionStatus(true);
-            client.subscribe("myuniquehome/status");
-        },
-        onFailure: (error) => {
-            console.error("Connection failed:", error);
-            updateConnectionStatus(false);
+    function connectMQTT() {
+        // Get form values
+        mqttConfig.broker = document.getElementById('mqttBroker').value;
+        mqttConfig.port = parseInt(document.getElementById('mqttPort').value);
+        mqttConfig.statusTopic = document.getElementById('statusTopic').value;
+        mqttConfig.controlTopic = document.getElementById('controlTopic').value;
+
+        // Validate inputs
+        if(!mqttConfig.broker || !mqttConfig.port || !mqttConfig.statusTopic || !mqttConfig.controlTopic) {
+            alert('Please fill all fields');
+            return;
         }
-    });
+
+        // Create new MQTT client with custom config
+        client = new Paho.MQTT.Client(
+            mqttConfig.broker,
+            mqttConfig.port,
+            "web_" + Math.random().toString(16).substr(2, 8)
+        );
+
+        // MQTT Message Handler
+        client.onMessageArrived = (msg) => {
+            try {
+                const d = JSON.parse(msg.payloadString);
+                currentState = {
+                    fanEnabled: d.fanEnabled,
+                    fanSpeed: d.fanSpeed,
+                    light1State: d.light1State,
+                    light2State: d.light2State
+                };
+                updateUI(d);
+            } catch(e) {
+                console.error('Error parsing MQTT message:', e);
+            }
+        };
+
+        // MQTT Connection Lost Handler
+        client.onConnectionLost = (responseObject) => {
+            console.log("Connection lost");
+            updateConnectionStatus(false);
+        };
+
+        // Connect
+        client.connect({
+            useSSL: true,
+            onSuccess: () => {
+                console.log("Connected to MQTT");
+                updateConnectionStatus(true);
+                saveConfig();
+                // Switch to dashboard
+                document.getElementById('loginPage').classList.remove('active');
+                document.getElementById('dashboardPage').classList.remove('hidden');
+                // Subscribe to status topic
+                client.subscribe(mqttConfig.statusTopic);
+            },
+            onFailure: (error) => {
+                console.error("Connection failed:", error);
+                alert('Failed to connect to MQTT broker. Check your settings.');
+                updateConnectionStatus(false);
+            }
+        });
+    }
+
+    // Logout
+    function logout() {
+        if(client && client.isConnected()) {
+            client.disconnect();
+        }
+        document.getElementById('dashboardPage').classList.add('hidden');
+        document.getElementById('loginPage').classList.add('active');
+        updateConnectionStatus(false);
+    }
 
     // Send MQTT Command
     function sendMQTT(cmd) {
+        if(!client || !client.isConnected()) {
+            alert('Not connected to MQTT');
+            return;
+        }
         try {
             let msg = new Paho.MQTT.Message(cmd);
-            msg.destinationName = "myuniquehome/control";
+            msg.destinationName = mqttConfig.controlTopic;
             client.send(msg);
             console.log("Sent: " + cmd);
         } catch(e) {
@@ -233,6 +364,11 @@
             status.className = 'connection-status disconnected';
         }
     }
+
+    // Initialize
+    window.addEventListener('load', () => {
+        loadConfig();
+    });
 </script>
 </body>
 </html>
