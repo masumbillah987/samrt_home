@@ -48,10 +48,10 @@
         .login-page.active { display: flex; }
         .login-container { width: 100%; max-width: 380px; }
         .login-form { display: flex; flex-direction: column; gap: 12px; }
-        input[type="text"], input[type="password"], input[type="number"] { 
+        input[type="text"], input[type="password"] { 
             width: 100%; padding: 12px; border: 2px solid #334155; background: #0f172a; border-radius: 10px; font-size: 14px; transition: 0.3s; color: #fff; 
         }
-        input[type="text"]:focus, input[type="password"]:focus, input[type="number"]:focus { 
+        input[type="text"]:focus, input[type="password"]:focus { 
             outline: none; border-color: #60a5fa; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2); 
         }
         .form-group { display: flex; flex-direction: column; gap: 5px; }
@@ -76,16 +76,6 @@
             
             <div class="login-form">
                 <div class="form-group">
-                    <label>MQTT Broker Address</label>
-                    <input type="text" id="mqttBroker" placeholder="broker.hivemq.com" value="broker.hivemq.com">
-                </div>
-
-                <div class="form-group">
-                    <label>MQTT Port</label>
-                    <input type="number" id="mqttPort" placeholder="8884" value="8884">
-                </div>
-
-                <div class="form-group">
                     <label>Status Topic</label>
                     <input type="text" id="statusTopic" placeholder="myuniquehome/status" value="myuniquehome/status">
                 </div>
@@ -100,7 +90,7 @@
         </div>
 
         <div style="text-align: center; font-size: 12px; color: #94a3b8; margin-top: 15px;">
-            Configure your unique MQTT settings to get started
+            Configure your unique MQTT topics to get started
         </div>
     </div>
 </div>
@@ -188,8 +178,6 @@
         const saved = localStorage.getItem('mqttConfig');
         if(saved) {
             mqttConfig = JSON.parse(saved);
-            document.getElementById('mqttBroker').value = mqttConfig.broker;
-            document.getElementById('mqttPort').value = mqttConfig.port;
             document.getElementById('statusTopic').value = mqttConfig.statusTopic;
             document.getElementById('controlTopic').value = mqttConfig.controlTopic;
             // Auto-connect if config exists
@@ -205,13 +193,11 @@
     // Connect to MQTT
     function connectMQTT() {
         // Get form values
-        mqttConfig.broker = document.getElementById('mqttBroker').value;
-        mqttConfig.port = parseInt(document.getElementById('mqttPort').value);
         mqttConfig.statusTopic = document.getElementById('statusTopic').value;
         mqttConfig.controlTopic = document.getElementById('controlTopic').value;
 
         // Validate inputs
-        if(!mqttConfig.broker || !mqttConfig.port || !mqttConfig.statusTopic || !mqttConfig.controlTopic) {
+        if(!mqttConfig.statusTopic || !mqttConfig.controlTopic) {
             alert('Please fill all fields');
             return;
         }
