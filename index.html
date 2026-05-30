@@ -4,153 +4,255 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Home Pro</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
-        :root { --bg: #0b0e14; --card: #1e293b; --accent: #38bdf8; --on: #22c55e; --off: #ef4444; }
-        body { background: var(--bg); color: #fff; font-family: sans-serif; display: flex; justify-content: center; padding: 20px; }
-        .container { width: 100%; max-width: 400px; }
-        .card { background: var(--card); padding: 20px; border-radius: 20px; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
-        .title { font-size: 14px; font-weight: bold; color: #94a3b8; margin-bottom: 15px; display: flex; justify-content: space-between; }
-        button { width: 100%; padding: 12px; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; background: #334155; color: white; transition: 0.3s; }
-        .active-on { background: var(--on) !important; box-shadow: 0 0 15px rgba(34,197,94,0.4); }
-        .active-off { background: var(--off) !important; box-shadow: 0 0 15px rgba(239,68,68,0.4); }
+        :root { --bg: #0f172a; --card: #1e293b; --accent: #38bdf8; --on: #22c55e; --off: #ef4444; }
+        * {margin:0; padding:0; box-sizing:border-box;}
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 15px; }
+        .header { text-align: center; font-size: 28px; font-weight: bold; color: #fff; margin-bottom: 10px; }
+        .card { background: var(--card); padding: 20px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+        .card-title { font-size: 16px; font-weight: 600; color: #60a5fa; margin-bottom: 15px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; background: #334155; color: white; transition: 0.3s; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        button:active { transform: scale(0.95); }
+        .active-on { background: var(--on) !important; box-shadow: 0 0 15px rgba(34,197,94,0.4) !important; }
+        .active-off { background: var(--off) !important; box-shadow: 0 0 15px rgba(239,68,68,0.4) !important; }
         
-        /* Animations */
-        .fan-icon { fill: #475569; transition: 0.5s; }
-        .spinning { animation: spin 1.5s linear infinite; fill: var(--on) !important; }
+        /* FAN ANIMATIONS */
+        .fan-container { display: flex; justify-content: center; align-items: center; margin-bottom: 15px; }
+        .fan-icon { width: 80px; height: 80px; fill: #475569; transition: fill 0.3s ease; }
+        .spinning { animation: spin 0.8s linear infinite; fill: var(--on) !important; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
         
-        .light-icon { fill: #475569; transition: 0.3s; }
-        .glow { filter: drop-shadow(0 0 15px #fbbf24); fill: #fbbf24 !important; }
+        /* LIGHT ANIMATIONS */
+        .light-item { background: #0f172a; border-radius: 12px; padding: 12px; margin: 8px 0; border: 1px solid #334155; }
+        .light-label { font-size: 14px; font-weight: 600; color: #e2e8f0; margin-bottom: 8px; transition: color 0.3s; }
+        .light-glow { color: #fbbf24 !important; text-shadow: 0 0 10px #fbbf24; }
+        
+        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+        .status-text { text-align: center; font-size: 14px; color: #94a3b8; margin: 10px 0; font-weight: 600; }
+        
+        .slider-container { padding: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8; }
+        input[type=range] { width: 100%; height: 8px; border-radius: 10px; background: #334155; outline: none; -webkit-appearance: none; accent-color: var(--accent); }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #22c55e; cursor: pointer; box-shadow: 0 0 8px rgba(34,197,94,0.5); transition: background 0.3s; }
+        input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #22c55e; cursor: pointer; border: none; box-shadow: 0 0 8px rgba(34,197,94,0.5); }
+        input[type=range]:disabled { opacity: 0.5; cursor: not-allowed; }
 
-        input[type=range] { width: 100%; margin-top: 15px; accent-color: var(--accent); }
+        .wifi-btn { background: #f59e0b !important; width: 100%; padding: 12px; margin-top: 10px; }
+        .wifi-btn:hover { background: #d97706 !important; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2 style="text-align:center;">Smart Home 🏠</h2>
+    <h1 class="header">⚙️ Smart Home</h1>
     
-    <!-- FAN CONTROL -->
+    <!-- FAN CONTROL CARD -->
     <div class="card">
-        <div style="display:flex; justify-content:center; margin-bottom:15px;">
-            <svg id="fanIcon" class="fan-icon" width="60" height="60" viewBox="0 0 100 100">
-                <path d="M50 50 L50 10 A40 40 0 0 1 90 50 Z M50 50 L90 50 A40 40 0 0 1 50 90 Z M50 50 L50 90 A40 40 0 0 1 10 50 Z M50 50 L10 50 A40 40 0 0 1 50 10 Z"/>
+        <div class="card-title">🌬️ Fan Control</div>
+        <div class="fan-container">
+            <svg id="fanIcon" class="fan-icon" viewBox="0 0 100 100">
+                <circle cx="50" cy="50" r="6" fill="white"/>
+                <path d="M50 10 Q70 30 50 50 Q30 30 50 10"/>
+                <path d="M90 50 Q70 70 50 50 Q70 30 90 50"/>
+                <path d="M50 90 Q30 70 50 50 Q70 70 50 90"/>
+                <path d="M10 50 Q30 30 50 50 Q30 70 10 50"/>
             </svg>
         </div>
-        <div class="title">Fan Control <span id="speedVal">50%</span></div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
-            <button id="btnFanOn" onclick="toggleFan(true)">ON</button>
-            <button id="btnFanOff" onclick="toggleFan(false)">OFF</button>
+        <div class="status-text" id="fanStatus">Fan is OFF</div>
+        <div class="button-group">
+            <button id="btnFanOn" onclick="updateState('on')">ON</button>
+            <button id="btnFanOff" class="active-off" onclick="updateState('off')">OFF</button>
         </div>
-        <input type="range" id="fanSlider" min="0" max="100" value="50" oninput="updateFanSpeed(this.value)" onchange="sendMQTT('SPEED_' + this.value)">
+        
+        <div class="slider-container">
+            <div class="slider-label"><span>Speed</span><span id="speedLabel">50%</span></div>
+            <input type="range" id="fanSlider" min="0" max="100" value="50" disabled onchange="handleSliderChange(this.value)">
+        </div>
     </div>
 
-    <!-- LIVING ROOM LIGHT -->
+    <!-- LIGHTS CONTROL CARD -->
     <div class="card">
-        <div class="title">Living Room</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-            <svg id="l1Icon" class="light-icon" width="30" height="30" viewBox="0 0 24 24">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm0 18c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm6-12H6V9h12v7z"/>
-            </svg>
-            <div style="display:flex; gap:10px; width:60%;">
-                <button id="btnL1On" onclick="toggleLight('L1', true)">ON</button>
-                <button id="btnL1Off" onclick="toggleLight('L1', false)">OFF</button>
+        <div class="card-title">💡 Lights Control</div>
+        
+        <!-- Light 1 -->
+        <div class="light-item">
+            <div class="light-label" id="light1Status">🏠 Light 1: OFF</div>
+            <div class="button-group">
+                <button id="btnL1On" onclick="updateState('l1on')">ON</button>
+                <button id="btnL1Off" class="active-off" onclick="updateState('l1off')">OFF</button>
+            </div>
+        </div>
+
+        <!-- Light 2 -->
+        <div class="light-item">
+            <div class="light-label" id="light2Status">🛏️ Light 2: OFF</div>
+            <div class="button-group">
+                <button id="btnL2On" onclick="updateState('l2on')">ON</button>
+                <button id="btnL2Off" class="active-off" onclick="updateState('l2off')">OFF</button>
             </div>
         </div>
     </div>
 
-    <!-- BEDROOM LIGHT -->
+    <!-- WIFI SETTINGS CARD -->
     <div class="card">
-        <div class="title">Bedroom</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-            <svg id="l2Icon" class="light-icon" width="30" height="30" viewBox="0 0 24 24">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm0 18c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm6-12H6V9h12v7z"/>
-            </svg>
-            <div style="display:flex; gap:10px; width:60%;">
-                <button id="btnL2On" onclick="toggleLight('L2', true)">ON</button>
-                <button id="btnL2Off" onclick="toggleLight('L2', false)">OFF</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- KITCHEN LIGHT -->
-    <div class="card">
-        <div class="title">Kitchen</div>
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-            <svg id="l3Icon" class="light-icon" width="30" height="30" viewBox="0 0 24 24">
-                <path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7zm0 18c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1zm6-12H6V9h12v7z"/>
-            </svg>
-            <div style="display:flex; gap:10px; width:60%;">
-                <button id="btnL3On" onclick="toggleLight('L3', true)">ON</button>
-                <button id="btnL3Off" onclick="toggleLight('L3', false)">OFF</button>
-            </div>
-        </div>
+        <button class="wifi-btn" onclick="location.href='/wifi'">⚙️ WiFi Settings</button>
     </div>
 </div>
 
 <script>
-    const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "web_" + Math.random().toString(16).substr(2,8));
-    
-    let state = {
+    let currentState = {
         fanEnabled: false,
         fanSpeed: 50,
         light1State: false,
-        light2State: false,
-        light3State: false
+        light2State: false
     };
-
-    client.onMessageArrived = (msg) => {
-        const d = JSON.parse(msg.payloadString);
-        state = { ...state, ...d };
-        updateUI();
-    };
-
-    client.connect({ useSSL: true, onSuccess: () => { client.subscribe("myuniquehome/status"); }});
     
-    function sendMQTT(cmd) {
-        let msg = new Paho.MQTT.Message(cmd);
-        msg.destinationName = "myuniquehome/control";
-        client.send(msg);
+    let isUpdatingSlider = false;
+
+    // Update state from server
+    async function updateState(action) {
+        try {
+            const response = await fetch('/api/' + action);
+            if(response.ok) {
+                const data = await response.json();
+                currentState = data;
+                updateUI(data);
+            }
+        } catch(e) {
+            console.error('Error:', e);
+        }
     }
 
-    function toggleFan(on) {
-        state.fanEnabled = on;
-        sendMQTT(on ? 'FAN_ON' : 'FAN_OFF');
-        updateUI();
+    // Handle slider change with smooth transitions
+    async function handleSliderChange(val) {
+        if(isUpdatingSlider) return;
+        isUpdatingSlider = true;
+        
+        let target = parseInt(val);
+        let diff = target - currentState.fanSpeed;
+        let steps = Math.ceil(Math.abs(diff) / 5);
+        let action = diff > 0 ? 'up' : 'down';
+        
+        document.getElementById('speedLabel').textContent = target + '%';
+        
+        // Send multiple requests to reach target
+        for(let i = 0; i < steps; i++) {
+            try {
+                await fetch('/api/' + action);
+                await new Promise(r => setTimeout(r, 100)); // Small delay between requests
+            } catch(e) {
+                console.error('Error in slider:', e);
+            }
+        }
+        
+        // Get final state
+        try {
+            const res = await fetch('/api/status');
+            const data = await res.json();
+            currentState = data;
+            updateUI(data);
+        } catch(e) {
+            console.error('Error getting status:', e);
+        }
+        
+        isUpdatingSlider = false;
     }
 
-    function updateFanSpeed(value) {
-        state.fanSpeed = value;
-        document.getElementById('speedVal').textContent = value + '%';
+    // Update UI based on state
+    function updateUI(data) {
+        // Update Fan UI
+        const fanIcon = document.getElementById('fanIcon');
+        const fanStatus = document.getElementById('fanStatus');
+        const btnFanOn = document.getElementById('btnFanOn');
+        const btnFanOff = document.getElementById('btnFanOff');
+        
+        if(data.fanEnabled) {
+            fanIcon.classList.add('spinning');
+            fanStatus.textContent = '✅ Fan is ON';
+            btnFanOn.classList.add('active-on');
+            btnFanOff.classList.remove('active-off');
+            document.getElementById('fanSlider').disabled = false;
+        } else {
+            fanIcon.classList.remove('spinning');
+            fanStatus.textContent = '❌ Fan is OFF';
+            btnFanOn.classList.remove('active-on');
+            btnFanOff.classList.add('active-off');
+            document.getElementById('fanSlider').disabled = true;
+        }
+        
+        // Update Fan Speed
+        if(!isUpdatingSlider) {
+            document.getElementById('fanSlider').value = data.fanSpeed;
+            document.getElementById('speedLabel').textContent = data.fanSpeed + '%';
+        }
+
+        // Update Light 1 UI
+        const l1Icon = document.getElementById('light1Status');
+        const btnL1On = document.getElementById('btnL1On');
+        const btnL1Off = document.getElementById('btnL1Off');
+        
+        if(data.light1State) {
+            l1Icon.textContent = '🏠 Light 1: ON';
+            l1Icon.classList.add('light-glow');
+            btnL1On.classList.add('active-on');
+            btnL1Off.classList.remove('active-off');
+        } else {
+            l1Icon.textContent = '🏠 Light 1: OFF';
+            l1Icon.classList.remove('light-glow');
+            btnL1On.classList.remove('active-on');
+            btnL1Off.classList.add('active-off');
+        }
+
+        // Update Light 2 UI
+        const l2Icon = document.getElementById('light2Status');
+        const btnL2On = document.getElementById('btnL2On');
+        const btnL2Off = document.getElementById('btnL2Off');
+        
+        if(data.light2State) {
+            l2Icon.textContent = '🛏️ Light 2: ON';
+            l2Icon.classList.add('light-glow');
+            btnL2On.classList.add('active-on');
+            btnL2Off.classList.remove('active-off');
+        } else {
+            l2Icon.textContent = '🛏️ Light 2: OFF';
+            l2Icon.classList.remove('light-glow');
+            btnL2On.classList.remove('active-on');
+            btnL2Off.classList.add('active-off');
+        }
     }
 
-    function toggleLight(light, on) {
-        const stateKey = light === 'L1' ? 'light1State' : light === 'L2' ? 'light2State' : 'light3State';
-        state[stateKey] = on;
-        sendMQTT(light + (on ? '_ON' : '_OFF'));
-        updateUI();
+    // Listen for IR remote changes (long polling)
+    async function listenForIRChanges() {
+        while(true) {
+            try {
+                const response = await fetch('/api/changed');
+                if(response.ok) {
+                    const data = await response.json();
+                    if(data.changed) {
+                        currentState = data;
+                        updateUI(data);
+                    }
+                }
+            } catch(e) {
+                console.error('Error listening for changes:', e);
+            }
+            await new Promise(r => setTimeout(r, 500)); // Wait before next poll
+        }
     }
 
-    function updateUI() {
-        // Update Fan
-        document.getElementById("fanIcon").className = state.fanEnabled ? "fan-icon spinning" : "fan-icon";
-        document.getElementById("btnFanOn").className = state.fanEnabled ? "active-on" : "";
-        document.getElementById("btnFanOff").className = !state.fanEnabled ? "active-off" : "";
-        document.getElementById("fanSlider").value = state.fanSpeed;
-        document.getElementById("speedVal").textContent = state.fanSpeed + "%";
-
-        // Update Lights
-        updateLightUI('l1', 'btnL1On', 'btnL1Off', state.light1State);
-        updateLightUI('l2', 'btnL2On', 'btnL2Off', state.light2State);
-        updateLightUI('l3', 'btnL3On', 'btnL3Off', state.light3State);
-    }
-
-    function updateLightUI(iconId, onBtnId, offBtnId, isOn) {
-        document.getElementById(iconId + "Icon").className = isOn ? "light-icon glow" : "light-icon";
-        document.getElementById(onBtnId).className = isOn ? "active-on" : "";
-        document.getElementById(offBtnId).className = !isOn ? "active-off" : "";
-    }
+    // Initialize on page load
+    window.addEventListener('load', async () => {
+        try {
+            const response = await fetch('/api/status');
+            const data = await response.json();
+            currentState = data;
+            updateUI(data);
+            listenForIRChanges(); // Start listening for IR changes
+        } catch(e) {
+            console.error('Error initializing:', e);
+        }
+    });
 </script>
 </body>
 </html>
