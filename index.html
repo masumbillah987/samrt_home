@@ -58,70 +58,42 @@
 </div>
 
 <script>
-    // 💡 ওয়েবসাইটের জন্য আমাদের WebSockets পোর্ট (8000) ব্যবহার করতে হবে
-    const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "web_client_" + parseInt(Math.random() * 100, 10));
+// 💡 আপনার HiveMQ Cloud ক্লাস্টার লিংক, পোর্ট ৮৮৮৪ এবং ইউজারনেম/পাসওয়ার্ড বসান
+const client = new Paho.MQTT.Client("xxxxxxxx.s1.eu.hivemq.cloud", 8884, "web_client_" + parseInt(Math.random() * 100, 10));
 
-    client.onConnectionLost = onConnectionLost;
-    client.onMessageArrived = onMessageArrived;
-    client.connect({onSuccess: onConnect});
+client.onConnectionLost = onConnectionLost;
+client.onMessageArrived = onMessageArrived;
 
-    function onConnect() {
-        console.log("Connected to MQTT Broker via WebSockets!");
-        document.getElementById("fanStatus").textContent = "Connected to Cloud";
-        client.subscribe("myuniquehome/status"); // ডিভাইসের স্ট্যাটাস শোনার জন্য
+// সিকিউরিটি প্যারামিটার যুক্ত করা হলো
+client.connect({
+    onSuccess: onConnect,
+    useSSL: true, // সিকিউর কানেকশন এনশিওর করতে
+    userName: "hivemq.webclient.1780157127447", 
+    password: "g0S.jm,41XHU7T;cMro?"
+});
+
+function onConnect() {
+    console.log("Connected Securely via WebSockets!");
+    document.getElementById("fanStatus").textContent = "Connected Securely to Cloud";
+    client.subscribe("myuniquehome/status");
+}
+
+function onConnectionLost(responseObject) {
+    if (responseObject.errorCode !== 0) {
+        document.getElementById("fanStatus").textContent = "Connection Lost! Retrying...";
+        setTimeout(() => client.connect({onSuccess: onConnect, useSSL: true, userName: "YOUR_MQTT_USERNAME", password: "YOUR_MQTT_PASSWORD"}), 5000);
     }
+}
 
-    function onConnectionLost(responseObject) {
-        if (responseObject.errorCode !== 0) {
-            document.getElementById("fanStatus").textContent = "Connection Lost! Retrying...";
-            setTimeout(() => client.connect({onSuccess: onConnect}), 5000);
-        }
-    }
+function onMessageArrived(message) {
+    // আগের UI আপডেটের লজিক এখানে হুবহু অপরিবর্তিত থাকবে...
+}
 
-    // ডিভাইস থেকে ফিডব্যাক আসলে ওয়েবপেজের UI অটোমেটিক আপডেট হবে
-    function onMessageArrived(message) {
-        console.log("Status Received: " + message.payloadString);
-        try {
-            const data = JSON.parse(message.payloadString);
-            
-            // Fan UI Update
-            document.getElementById("fanStatus").textContent = "Fan is " + (data.fanEnabled ? "ON (" + data.fanSpeed + "%)" : "OFF");
-            if(data.fanEnabled) {
-                document.getElementById("btnFanOn").classList.add("active-on");
-                document.getElementById("btnFanOff").classList.remove("active-off");
-            } else {
-                document.getElementById("btnFanOn").classList.remove("active-on");
-                document.getElementById("btnFanOff").classList.add("active-off");
-            }
-
-            // Light 1 UI Update
-            document.getElementById("light1Status").textContent = "Light 1: " + (data.light1State ? "ON" : "OFF");
-            if(data.light1State) {
-                document.getElementById("btnL1On").classList.add("active-on");
-                document.getElementById("btnL1Off").classList.remove("active-off");
-            } else {
-                document.getElementById("btnL1On").classList.remove("active-on");
-                document.getElementById("btnL1Off").classList.add("active-off");
-            }
-
-            // Light 2 UI Update
-            document.getElementById("light2Status").textContent = "Light 2: " + (data.light2State ? "ON" : "OFF");
-            if(data.light2State) {
-                document.getElementById("btnL2On").classList.add("active-on");
-                document.getElementById("btnL2Off").classList.remove("active-off");
-            } else {
-                document.getElementById("btnL2On").classList.remove("active-on");
-                document.getElementById("btnL2Off").classList.add("active-off");
-            }
-        } catch(e) { console.error("JSON Parsing Error", e); }
-    }
-
-    // বাটন প্রেস করলে ব্রোকারে কমান্ড পাঠানোর ফাংশন
-    function sendMqttCmd(cmd) {
-        const message = new Paho.MQTT.Message(cmd);
-        message.destinationName = "myuniquehome/control";
-        client.send(message);
-    }
+function sendMqttCmd(cmd) {
+    const message = new Paho.MQTT.Message(cmd);
+    message.destinationName = "myuniquehome/control";
+    client.send(message);
+}
 </script>
 </body>
 </html>
