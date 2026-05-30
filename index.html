@@ -48,11 +48,14 @@
         .login-page.active { display: flex; }
         .login-container { width: 100%; max-width: 380px; }
         .login-form { display: flex; flex-direction: column; gap: 12px; }
-        input[type="text"], input[type="password"] { 
+        input[type="text"] { 
             width: 100%; padding: 12px; border: 2px solid #334155; background: #0f172a; border-radius: 10px; font-size: 14px; transition: 0.3s; color: #fff; 
         }
-        input[type="text"]:focus, input[type="password"]:focus { 
+        input[type="text"]:focus { 
             outline: none; border-color: #60a5fa; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2); 
+        }
+        input[type="text"]::placeholder {
+            color: transparent;
         }
         .form-group { display: flex; flex-direction: column; gap: 5px; }
         .form-group label { font-size: 12px; font-weight: 600; color: #94a3b8; }
@@ -77,12 +80,12 @@
             <div class="login-form">
                 <div class="form-group">
                     <label>Status Topic</label>
-                    <input type="text" id="statusTopic" placeholder="myuniquehome/status" value="myuniquehome/status">
+                    <input type="text" id="statusTopic">
                 </div>
 
                 <div class="form-group">
                     <label>Control Topic</label>
-                    <input type="text" id="controlTopic" placeholder="myuniquehome/control" value="myuniquehome/control">
+                    <input type="text" id="controlTopic">
                 </div>
 
                 <button class="login-btn" onclick="connectMQTT()">🚀 Connect</button>
@@ -162,8 +165,8 @@
     let mqttConfig = {
         broker: "broker.hivemq.com",
         port: 8884,
-        statusTopic: "myuniquehome/status",
-        controlTopic: "myuniquehome/control"
+        statusTopic: "",
+        controlTopic: ""
     };
 
     let currentState = {
