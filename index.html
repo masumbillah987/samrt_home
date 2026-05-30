@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <title>Smart Home Cloud Dash</title>
+    <!-- CDN এর মাধ্যমে MQTT লাইব্রেরি যুক্ত করা হলো -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
+    
+    <style>
+        /* আপনার আগের সেই চমৎকার ডার্ক থিম স্টাইল এখানে হুবহু থাকবে */
+        * {margin:0; padding:0; box-sizing:border-box;}
+        body {background:#0f172a; font-family:'Segoe UI', sans-serif; color:#fff; display:flex; justify-content:center; align-items:center; min-height:100vh; padding:20px;}
+        .container {width:100%; max-width:420px; display:flex; flex-direction:column; gap:15px;}
+        .header {text-align:center; font-size:24px; font-weight:bold; color:#60a5fa;}
+        .card {background:#1e293b; border-radius:16px; padding:20px; box-shadow:0 8px 32px rgba(0,0,0,0.4);}
+        .card-title {font-size:16px; font-weight:600; margin-bottom:15px; color:#60a5fa;}
+        .button-group {display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:10px 0;}
+        button {padding:12px; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; background:#475569; color:#94a3b8; text-transform:uppercase;}
+        .active-on {background:#22c55e !important; color:white !important;}
+        .active-off {background:#ef4444 !important; color:white !important;}
+        .status {text-align:center; font-size:14px; color:#e2e8f0; margin-top:5px;}
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">Smart Home Cloud</div>
+    
+    <!-- Fan Card -->
+    <div class="card">
+        <div class="card-title">Fan Control</div>
+        <div class="status" id="fanStatus">Connecting to Cloud...</div>
+        <div class="button-group">
+            <button id="btnFanOn" onclick="sendMqttCmd('FAN_ON')">On</button>
+            <button id="btnFanOff" onclick="sendMqttCmd('FAN_OFF')">Off</button>
+        </div>
+        <div class="button-group">
+            <button onclick="sendMqttCmd('FAN_UP')">Speed +</button>
+            <button onclick="sendMqttCmd('FAN_DOWN')">Speed -</button>
+        </div>
+    </div>
+
+    <!-- Lights Card -->
+    <div class="card">
+        <div class="card-title">Lights Control</div>
+        <p id="light1Status" style="font-size:14px; margin-bottom:5px;">Light 1: OFF</p>
+        <div class="button-group">
+            <button id="btnL1On" onclick="sendMqttCmd('L1_ON')">On</button>
+            <button id="btnL1Off" onclick="sendMqttCmd('L1_OFF')">Off</button>
+        </div>
+        <br>
+        <p id="light2Status" style="font-size:14px; margin-bottom:5px;">Light 2: OFF</p>
+        <div class="button-group">
+            <button id="btnL2On" onclick="sendMqttCmd('L2_ON')">On</button>
+            <button id="btnL2Off" onclick="sendMqttCmd('L2_OFF')">Off</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // 💡 ওয়েবসাইটের জন্য আমাদের WebSockets পোর্ট (8000) ব্যবহার করতে হবে
+    const client = new Paho.MQTT.Client("broker.hivemq.com", 8000, "web_client_" + parseInt(Math.random() * 100, 10));
+
+    client.onConnectionLost = onConnectionLost;
+    client.onMessageArrived = onMessageArrived;
+    client.connect({onSuccess: onConnect});
+
+    function onConnect() {
+        console.log("Connected to MQTT Broker via WebSockets!");
+        document.getElementById("fanStatus").textContent = "Connected to Cloud";
+        client.subscribe("myuniquehome/status"); // ডিভাইসের স্ট্যাটাস শোনার জন্য
+    }
+
+    function onConnectionLost(responseObject) {
+        if (responseObject.errorCode !== 0) {
+            document.getElementById("fanStatus").textContent = "Connection Lost! Retrying...";
+            setTimeout(() => client.connect({onSuccess: onConnect}), 5000);
+        }
+    }
+
+    // ডিভাইস থেকে ফিডব্যাক আসলে ওয়েবপেজের UI অটোমেটিক আপডেট হবে
+    function onMessageArrived(message) {
+        console.log("Status Received: " + message.payloadString);
+        try {
+            const data = JSON.parse(message.payloadString);
+            
+            // Fan UI Update
+            document.getElementById("fanStatus").textContent = "Fan is " + (data.fanEnabled ? "ON (" + data.fanSpeed + "%)" : "OFF");
+            if(data.fanEnabled) {
+                document.getElementById("btnFanOn").classList.add("active-on");
+                document.getElementById("btnFanOff").classList.remove("active-off");
+            } else {
+                document.getElementById("btnFanOn").classList.remove("active-on");
+                document.getElementById("btnFanOff").classList.add("active-off");
+            }
+
+            // Light 1 UI Update
+            document.getElementById("light1Status").textContent = "Light 1: " + (data.light1State ? "ON" : "OFF");
+            if(data.light1State) {
+                document.getElementById("btnL1On").classList.add("active-on");
+                document.getElementById("btnL1Off").classList.remove("active-off");
+            } else {
+                document.getElementById("btnL1On").classList.remove("active-on");
+                document.getElementById("btnL1Off").classList.add("active-off");
+            }
+
+            // Light 2 UI Update
+            document.getElementById("light2Status").textContent = "Light 2: " + (data.light2State ? "ON" : "OFF");
+            if(data.light2State) {
+                document.getElementById("btnL2On").classList.add("active-on");
+                document.getElementById("btnL2Off").classList.remove("active-off");
+            } else {
+                document.getElementById("btnL2On").classList.remove("active-on");
+                document.getElementById("btnL2Off").classList.add("active-off");
+            }
+        } catch(e) { console.error("JSON Parsing Error", e); }
+    }
+
+    // বাটন প্রেস করলে ব্রোকারে কমান্ড পাঠানোর ফাংশন
+    function sendMqttCmd(cmd) {
+        const message = new Paho.MQTT.Message(cmd);
+        message.destinationName = "myuniquehome/control";
+        client.send(message);
+    }
+</script>
+</body>
+</html>
