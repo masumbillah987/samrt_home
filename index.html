@@ -3,193 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Global Smart Home Dashboard</title>
+    <title>Global Smart Home Control</title>
+    <!-- Paho MQTT WebSockets Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
     
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { background: #0f172a; font-family: 'Segoe UI', Arial, sans-serif; color: #fff; min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; }
-        .container { width: 100%; max-width: 420px; background: #1e293b; padding: 25px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.5); }
-        h2 { text-align: center; color: #fff; font-size: 24px; font-weight: bold; letter-spacing: 1px; margin-bottom: 5px; }
-        .subtitle { text-align: center; color: #94a3b8; font-size: 12px; margin-bottom: 20px; text-transform: uppercase; }
-        .status-bar { text-align: center; padding: 12px; margin-bottom: 20px; border-radius: 10px; font-weight: bold; font-size: 14px; background: #334155; transition: 0.3s; }
-        .connected { color: #22c55e; background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.2); }
-        .disconnected { color: #ef4444; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); }
-        .card { background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 15px; margin-bottom: 15px; }
-        .card-title { font-size: 15px; font-weight: 600; margin-bottom: 12px; color: #60a5fa; }
-        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0; }
-        button { padding: 12px; border: none; border-radius: 10px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s ease; text-transform: uppercase; letter-spacing: 0.5px; background: #475569; color: #94a3b8; }
-        button:active { transform: scale(0.97); }
-        .btn-on.active { background: #22c55e !important; color: white !important; box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3); }
-        .btn-off.active { background: #ef4444 !important; color: white !important; box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2); }
-        .btn-action { background: #3b82f6; color: white; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2); }
-        .btn-action:hover { background: #2563eb; }
-        .slider-container { padding: 10px 0 5px 0; display: flex; flex-direction: column; gap: 5px; }
-        .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8; }
-        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; margin-top: 5px; }
-        input[type=range]:focus { outline: none; }
-        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 6px; cursor: pointer; background: #334155; border-radius: 10px; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 18px; width: 18px; border-radius: 50%; background: #22c55e; cursor: not-allowed; margin-top: -6px; transition: 0.3s; }
-        .slider-active::-webkit-slider-thumb { cursor: pointer !important; background: #22c55e !important; box-shadow: 0 0 8px rgba(34,197,94,0.5); }
-        input[type=range]:disabled::-webkit-slider-thumb { background: #475569 !important; box-shadow: none !important; }
+        body { background: #0f172a; font-family: sans-serif; color: #fff; display: flex; justify-content: center; padding: 20px; }
+        .container { width: 100%; max-width: 400px; background: #1e293b; padding: 20px; border-radius: 15px; }
+        .status { text-align: center; padding: 10px; margin-bottom: 20px; border-radius: 8px; font-size: 13px; background: #334155; }
+        .online { color: #22c55e; }
+        .offline { color: #ef4444; }
+        button { width: 100%; padding: 15px; margin: 5px 0; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; color: white; }
+        .btn-on { background: #22c55e; }
+        .btn-off { background: #ef4444; }
+        .card { background: #0f172a; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
+        h3 { margin-bottom: 10px; color: #60a5fa; font-size: 16px; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h2>Smart Home</h2>
-    <div class="subtitle">Global WebSocket Dashboard</div>
-    <div id="connectionStatus" class="status-bar disconnected">CONNECTING TO GLOBAL BROKER...</div>
+    <div id="status" class="status offline">Connecting...</div>
 
     <div class="card">
-        <div class="card-title" id="fanTitle">Fan Control (OFF)</div>
-        <div class="button-group">
-            <button id="btn_FAN_ON" class="btn-on" onclick="sendMQTT('FAN_ON')">On</button>
-            <button id="btn_FAN_OFF" class="btn-off" onclick="sendMQTT('FAN_OFF')">Off</button>
-        </div>
-        <div class="button-group">
-            <button class="btn-action" onclick="sendMQTT('FAN_UP')">Speed Up ⚡</button>
-            <button class="btn-action" onclick="sendMQTT('FAN_DOWN')">Speed Down 🐢</button>
-        </div>
-        <div class="slider-container">
-            <div class="slider-label"><span>Live Speed Flow</span><span id="speedLabel">0%</span></div>
-            <input type="range" id="fanSlider" min="0" max="100" value="0" disabled>
-        </div>
+        <h3>Fan Control</h3>
+        <button class="btn-on" onclick="sendMQTT('FAN_ON')">FAN ON</button>
+        <button class="btn-off" onclick="sendMQTT('FAN_OFF')">FAN OFF</button>
     </div>
 
     <div class="card">
-        <div class="card-title" id="l1Title">Light 1: OFF</div>
-        <div class="button-group">
-            <button id="btn_L1_ON" class="btn-on" onclick="sendMQTT('L1_ON')">On</button>
-            <button id="btn_L1_OFF" class="btn-off" onclick="sendMQTT('L1_OFF')">Off</button>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-title" id="l2Title">Light 2: OFF</div>
-        <div class="button-group">
-            <button id="btn_L2_ON" class="btn-on" onclick="sendMQTT('L2_ON')">On</button>
-            <button id="btn_L2_OFF" class="btn-off" onclick="sendMQTT('L2_OFF')">Off</button>
-        </div>
+        <h3>Lights Control</h3>
+        <button class="btn-on" onclick="sendMQTT('L1_ON')">LIGHT 1 ON</button>
+        <button class="btn-off" onclick="sendMQTT('L1_OFF')">LIGHT 1 OFF</button>
+        <button class="btn-on" onclick="sendMQTT('L2_ON')">LIGHT 2 ON</button>
+        <button class="btn-off" onclick="sendMQTT('L2_OFF')">LIGHT 2 OFF</button>
     </div>
 </div>
 
 <script>
-    // ===== MQTT CONFIGURATION (ESP8266 এর সাথে মিল রেখে) =====
-    const MQTT_HOST = "broker.hivemq.com"; 
-    const MQTT_PORT = 8083; // HiveMQ পাবলিক ব্রোকারের স্ট্যান্ডার্ড WebSockets পোর্ট (Non-SSL)
-    const MQTT_CLIENT_ID = "web_client_" + Math.random().toString(16).substr(2, 8);
+    // HiveMQ পাবলিক ব্রোকারের কনফিগারেশন (SSL/WSS)
+    const MQTT_HOST = "broker.hivemq.com";
+    const MQTT_PORT = 8884; // SSL পোর্ট
+    const CLIENT_ID = "web_" + Math.random().toString(16).substr(2, 8);
     
-    // 💡 আপনার সিকিউর ব্রোকারের ইউজারনেম এবং পাসওয়ার্ড এখানে দিন (যদি ব্যবহার করেন)
-    const MQTT_USER = "Masum_Home"; 
-    const MQTT_PASS = "12345678"; 
+    const client = new Paho.MQTT.Client(MQTT_HOST, MQTT_PORT, CLIENT_ID);
 
-    const TOPIC_SUB = "myuniquehome/status";  // ESP8266 এই টপিকে ডাটা পাঠায়
-    const TOPIC_PUB = "myuniquehome/control"; // ESP8266 এই টপিক থেকে কমান্ড শোনে
-
-    // Initialize Paho MQTT Client
-    const client = new Paho.MQTT.Client(MQTT_HOST, Number(MQTT_PORT), MQTT_CLIENT_ID);
-
-    client.onConnectionLost = onConnectionLost;
-    client.onMessageArrived = onMessageArrived;
-
-    const options = {
-        useSSL: false, // আপনার ব্রোকার SSL (WSS) সাপোর্ট করলে true এবং পোর্ট 8001 বা 443 হবে
-        userName: MQTT_USER,
-        password: MQTT_PASS,
-        onSuccess: onConnect,
-        onFailure: onFailure,
-        keepAliveInterval: 30,
-        reconnect: true
+    client.onConnectionLost = () => {
+        document.getElementById('status').textContent = "DISCONNECTED";
+        document.getElementById('status').className = "status offline";
     };
 
-    // Connect to Broker
-    client.connect(options);
-
-    function onConnect() {
-        console.log("Connected via WebSockets!");
-        const statusDiv = document.getElementById("connectionStatus");
-        statusDiv.textContent = "ONLINE (GLOBAL CLOUD)";
-        statusDiv.className = "status-bar connected";
-        
-        // রিয়েলটাইম ফিডব্যাক পেতে সাবস্ক্রাইব করুন
-        client.subscribe(TOPIC_SUB);
-    }
-
-    function onFailure(message) {
-        console.log("Connection failed: " + message.errorMessage);
-        const statusDiv = document.getElementById("connectionStatus");
-        statusDiv.textContent = "CONNECTION FAILED!";
-        statusDiv.className = "status-bar disconnected";
-    }
-
-    function onConnectionLost(responseObject) {
-        if (responseObject.errorCode !== 0) {
-            console.log("Connection Lost: " + responseObject.errorMessage);
-            const statusDiv = document.getElementById("connectionStatus");
-            statusDiv.textContent = "OFFLINE - RECONNECTING...";
-            statusDiv.className = "status-bar disconnected";
+    client.connect({
+        useSSL: true, // SSL এনাবল করা হয়েছে
+        onSuccess: () => {
+            document.getElementById('status').textContent = "ONLINE (SECURE)";
+            document.getElementById('status').className = "status online";
+            client.subscribe("myuniquehome/status");
+        },
+        onFailure: (err) => {
+            document.getElementById('status').textContent = "FAILED: " + err.errorMessage;
         }
-    }
+    });
 
-    // ===== ESP8266 থেকে JSON ডাটা রিসিভ করে UI আপডেট করা =====
-    function onMessageArrived(message) {
-        console.log("Received Data: " + message.payloadString);
-        try {
-            const data = JSON.parse(message.payloadString);
-            
-            // 1. Fan UI Update
-            const slider = document.getElementById('fanSlider');
-            document.getElementById('fanTitle').textContent = `Fan Control (${data.fanEnabled ? 'ON' : 'OFF'})`;
-            document.getElementById('speedLabel').textContent = data.fanSpeed + '%';
-            slider.value = data.fanSpeed;
-            slider.disabled = !data.fanEnabled;
-            
-            if(data.fanEnabled) {
-                slider.classList.add('slider-active');
-                document.getElementById('btn_FAN_ON').classList.add('active');
-                document.getElementById('btn_FAN_OFF').classList.remove('active');
-            } else {
-                slider.classList.remove('slider-active');
-                document.getElementById('btn_FAN_ON').classList.remove('active');
-                document.getElementById('btn_FAN_OFF').classList.add('active');
-            }
-
-            // 2. Light 1 UI Update
-            document.getElementById('l1Title').textContent = `Light 1: ${data.light1State ? 'ON' : 'OFF'}`;
-            if(data.light1State) {
-                document.getElementById('btn_L1_ON').classList.add('active');
-                document.getElementById('btn_L1_OFF').classList.remove('active');
-            } else {
-                document.getElementById('btn_L1_ON').classList.remove('active');
-                document.getElementById('btn_L1_OFF').classList.add('active');
-            }
-
-            // 3. Light 2 UI Update
-            document.getElementById('l2Title').textContent = `Light 2: ${data.light2State ? 'ON' : 'OFF'}`;
-            if(data.light2State) {
-                document.getElementById('btn_L2_ON').classList.add('active');
-                document.getElementById('btn_L2_OFF').classList.remove('active');
-            } else {
-                document.getElementById('btn_L2_ON').classList.remove('active');
-                document.getElementById('btn_L2_OFF').classList.add('active');
-            }
-
-        } catch (e) {
-            console.error("JSON Parsing Error", e);
-        }
-    }
-
-    // ===== কমান্ড পাবলিশ করার ফাংশন =====
-    function sendMQTT(command) {
+    function sendMQTT(cmd) {
         if(client.isConnected()) {
-            const message = new Paho.MQTT.Message(command);
-            message.destinationName = TOPIC_PUB;
-            message.qos = 1;
+            let message = new Paho.MQTT.Message(cmd);
+            message.destinationName = "myuniquehome/control";
             client.send(message);
-            console.log("Sent Command: " + command);
         } else {
-            alert("Not connected to MQTT broker yet!");
+            alert("Not connected!");
         }
     }
 </script>
