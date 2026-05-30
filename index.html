@@ -2,85 +2,362 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <!-- Viewport optimized for mobile app behavior -->
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Smart Home Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         :root { --bg: #0f172a; --card: #1e293b; --accent: #38bdf8; --on: #22c55e; --off: #ef4444; }
-        * { margin:0; padding:0; box-sizing:border-box; }
+        * {margin:0; padding:0; box-sizing:border-box;}
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { width: 100%; max-width: 420px; display: flex; flex-direction: column; gap: 15px; }
+        .header { text-align: center; font-size: 28px; font-weight: bold; color: #fff; margin-bottom: 10px; }
+        .card { background: var(--card); padding: 20px; border-radius: 16px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+        .card-title { font-size: 16px; font-weight: 600; color: #60a5fa; margin-bottom: 15px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 10px; font-weight: bold; cursor: pointer; background: #334155; color: white; transition: 0.3s; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
+        button:active { transform: scale(0.95); }
+        .active-on { background: var(--on) !important; box-shadow: 0 0 15px rgba(34,197,94,0.4) !important; }
+        .active-off { background: var(--off) !important; box-shadow: 0 0 15px rgba(239,68,68,0.4) !important; }
         
-        html, body { 
-            width: 100%; height: 100%; 
-            overscroll-behavior: none; /* Prevents rubber-band bounce */
-            -webkit-user-select: none; user-select: none; /* Prevents text selection */
-            background: var(--bg); color: #fff; 
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            position: fixed; overflow: hidden;
-        }
-        
-        .container, .login-container { 
-            width: 100%; height: 100%; padding: 15px; overflow-y: auto; 
-            -webkit-overflow-scrolling: touch; 
-        }
-
-        button { 
-            touch-action: manipulation; /* Removes 300ms tap delay */
-            padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; 
-            background: #334155; color: white; transition: 0.2s;
-        }
-        button:active { transform: scale(0.96); filter: brightness(0.9); }
-        
-        /* Slider Optimization */
-        input[type=range] { height: 28px; accent-color: var(--accent); }
-        input[type=range]::-webkit-slider-thumb { width: 28px; height: 28px; border-radius: 50%; background: #22c55e; }
-
-        .active-on { background: var(--on) !important; }
-        .active-off { background: var(--off) !important; }
-
-        /* Existing component styles remain untouched as requested */
-        .card { background: var(--card); padding: 15px; border-radius: 14px; margin-bottom: 10px; }
-        .header { text-align: center; font-size: 24px; font-weight: bold; margin: 15px 0; }
-        .login-page, .dashboard-page { display: none; height: 100%; width: 100%; flex-direction: column; }
-        .active { display: flex; }
-        .hidden { display: none; }
-        .fan-icon { width: 70px; height: 70px; fill: #475569; }
+        /* FAN ANIMATIONS */
+        .fan-container { display: flex; justify-content: center; align-items: center; margin-bottom: 15px; }
+        .fan-icon { width: 80px; height: 80px; fill: #475569; transition: fill 0.3s ease; }
         .spinning { animation: spin 0.8s linear infinite; fill: var(--on) !important; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
+        
+        /* LIGHT ANIMATIONS */
+        .light-item { background: #0f172a; border-radius: 12px; padding: 12px; margin: 8px 0; border: 1px solid #334155; }
+        .light-label { font-size: 14px; font-weight: 600; color: #e2e8f0; margin-bottom: 8px; transition: color 0.3s; }
+        .light-glow { color: #fbbf24 !important; text-shadow: 0 0 10px #fbbf24; }
+        
+        .button-group { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 10px 0; }
+        .status-text { text-align: center; font-size: 14px; color: #94a3b8; margin: 10px 0; font-weight: 600; }
+        
+        .slider-container { padding: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+        .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8; }
+        input[type=range] { width: 100%; height: 8px; border-radius: 10px; background: #334155; outline: none; -webkit-appearance: none; accent-color: var(--accent); }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #22c55e; cursor: pointer; box-shadow: 0 0 8px rgba(34,197,94,0.5); transition: background 0.3s; }
+        input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #22c55e; cursor: pointer; border: none; box-shadow: 0 0 8px rgba(34,197,94,0.5); }
+        input[type=range]:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .connection-status { text-align: center; font-size: 12px; padding: 8px; margin-top: 10px; border-radius: 8px; background: #0f172a; }
+        .connected { color: var(--on); }
+        .disconnected { color: var(--off); }
+
+        /* LOGIN PAGE STYLES */
+        .login-page { display: none; }
+        .login-page.active { display: flex; }
+        .login-container { width: 100%; max-width: 380px; }
+        .login-form { display: flex; flex-direction: column; gap: 12px; }
+        input[type="text"] { 
+            width: 100%; padding: 12px; border: 2px solid #334155; background: #0f172a; border-radius: 10px; font-size: 14px; transition: 0.3s; color: #fff; 
+        }
+        input[type="text"]:focus { 
+            outline: none; border-color: #60a5fa; box-shadow: 0 0 10px rgba(96, 165, 250, 0.2); 
+        }
+        input[type="text"]::placeholder {
+            color: transparent;
+        }
+        .form-group { display: flex; flex-direction: column; gap: 5px; }
+        .form-group label { font-size: 12px; font-weight: 600; color: #94a3b8; }
+        .login-btn { background: #f59e0b !important; padding: 12px; margin-top: 10px; font-weight: 600; }
+        .login-btn:hover { background: #d97706 !important; }
+        .logout-btn { background: #ef4444 !important; font-size: 12px; padding: 8px; margin-top: 10px; }
+
+        .dashboard-page { display: flex; flex-direction: column; gap: 15px; }
+        .dashboard-page.hidden { display: none; }
     </style>
 </head>
 <body>
 
-<!-- CONTENT REMAINS UNTOUCHED AS REQUESTED -->
+<!-- LOGIN PAGE -->
 <div class="login-page active" id="loginPage">
     <div class="login-container">
-        <h1 class="header">🔐 Smart Home</h1>
+        <h1 class="header">🔐 Smart Home Login</h1>
+        
         <div class="card">
+            <div class="card-title">MQTT Configuration</div>
+            
             <div class="login-form">
-                <input type="text" id="statusTopic" placeholder="Status Topic">
-                <input type="text" id="controlTopic" placeholder="Control Topic" style="margin-top:10px">
-                <button class="login-btn" onclick="connectMQTT()" style="margin-top:10px">Connect</button>
+                <div class="form-group">
+                    <label>Status Topic</label>
+                    <input type="text" id="statusTopic">
+                </div>
+
+                <div class="form-group">
+                    <label>Control Topic</label>
+                    <input type="text" id="controlTopic">
+                </div>
+
+                <button class="login-btn" onclick="connectMQTT()">🚀 Connect</button>
             </div>
+        </div>
+
+        <div style="text-align: center; font-size: 12px; color: #94a3b8; margin-top: 15px;">
+            Configure your unique MQTT topics to get started
         </div>
     </div>
 </div>
 
-<div class="dashboard-page" id="dashboardPage">
-    <div class="header-row" style="padding:15px">
-        <h1 class="header">⚙️ Smart Home</h1>
-        <button class="logout-btn" onclick="logout()">Logout</button>
-    </div>
-    <div style="padding:15px">
-        <!-- Fan and Light components here -->
+<!-- DASHBOARD PAGE -->
+<div class="dashboard-page hidden" id="dashboardPage">
+    <div class="container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h1 class="header">⚙️ Smart Home</h1>
+            <button class="logout-btn" onclick="logout()">Logout</button>
+        </div>
+        
+        <!-- FAN CONTROL CARD -->
+        <div class="card">
+            <div class="card-title">🌬️ Fan Control</div>
+            <div class="fan-container">
+                <svg id="fanIcon" class="fan-icon" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="6" fill="white"/>
+                    <path d="M50 10 Q70 30 50 50 Q30 30 50 10"/>
+                    <path d="M90 50 Q70 70 50 50 Q70 30 90 50"/>
+                    <path d="M50 90 Q30 70 50 50 Q70 70 50 90"/>
+                    <path d="M10 50 Q30 30 50 50 Q30 70 10 50"/>
+                </svg>
+            </div>
+            <div class="status-text" id="fanStatus">Fan is OFF</div>
+            <div class="button-group">
+                <button id="btnFanOn" onclick="sendMQTT('FAN_ON')">ON</button>
+                <button id="btnFanOff" class="active-off" onclick="sendMQTT('FAN_OFF')">OFF</button>
+            </div>
+            
+            <div class="slider-container">
+                <div class="slider-label"><span>Speed</span><span id="speedLabel">50%</span></div>
+                <input type="range" id="fanSlider" min="0" max="100" value="50" disabled oninput="document.getElementById('speedLabel').textContent = this.value + '%'" onchange="sendMQTT('SPEED_' + this.value)">
+            </div>
+        </div>
+
+        <!-- LIGHTS CONTROL CARD -->
+        <div class="card">
+            <div class="card-title">💡 Lights Control</div>
+            
+            <!-- Light 1 -->
+            <div class="light-item">
+                <div class="light-label" id="light1Status">🏠 Light 1: OFF</div>
+                <div class="button-group">
+                    <button id="btnL1On" onclick="sendMQTT('L1_ON')">ON</button>
+                    <button id="btnL1Off" class="active-off" onclick="sendMQTT('L1_OFF')">OFF</button>
+                </div>
+            </div>
+
+            <!-- Light 2 -->
+            <div class="light-item">
+                <div class="light-label" id="light2Status">🛏️ Light 2: OFF</div>
+                <div class="button-group">
+                    <button id="btnL2On" onclick="sendMQTT('L2_ON')">ON</button>
+                    <button id="btnL2Off" class="active-off" onclick="sendMQTT('L2_OFF')">OFF</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- CONNECTION STATUS -->
+        <div class="connection-status" id="connectionStatus" class="disconnected">
+            🔴 Connecting to MQTT...
+        </div>
     </div>
 </div>
 
 <script>
-    // Prevent zoom and pinch gestures
-    document.addEventListener('gesturestart', e => e.preventDefault());
-    document.addEventListener('touchmove', e => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
+    let client = null;
+    let mqttConfig = {
+        broker: "broker.hivemq.com",
+        port: 8884,
+        statusTopic: "",
+        controlTopic: ""
+    };
 
-    // ... (Keep all your existing Paho MQTT logic and functions exactly as they are) ...
+    let currentState = {
+        fanEnabled: false,
+        fanSpeed: 50,
+        light1State: false,
+        light2State: false
+    };
+
+    // Load saved config from localStorage
+    function loadConfig() {
+        const saved = localStorage.getItem('mqttConfig');
+        if(saved) {
+            mqttConfig = JSON.parse(saved);
+            document.getElementById('statusTopic').value = mqttConfig.statusTopic;
+            document.getElementById('controlTopic').value = mqttConfig.controlTopic;
+            // Auto-connect if config exists
+            connectMQTT();
+        }
+    }
+
+    // Save config to localStorage
+    function saveConfig() {
+        localStorage.setItem('mqttConfig', JSON.stringify(mqttConfig));
+    }
+
+    // Connect to MQTT
+    function connectMQTT() {
+        // Get form values
+        mqttConfig.statusTopic = document.getElementById('statusTopic').value;
+        mqttConfig.controlTopic = document.getElementById('controlTopic').value;
+
+        // Validate inputs
+        if(!mqttConfig.statusTopic || !mqttConfig.controlTopic) {
+            alert('Please fill all fields');
+            return;
+        }
+
+        // Create new MQTT client with custom config
+        client = new Paho.MQTT.Client(
+            mqttConfig.broker,
+            mqttConfig.port,
+            "web_" + Math.random().toString(16).substr(2, 8)
+        );
+
+        // MQTT Message Handler
+        client.onMessageArrived = (msg) => {
+            try {
+                const d = JSON.parse(msg.payloadString);
+                currentState = {
+                    fanEnabled: d.fanEnabled,
+                    fanSpeed: d.fanSpeed,
+                    light1State: d.light1State,
+                    light2State: d.light2State
+                };
+                updateUI(d);
+            } catch(e) {
+                console.error('Error parsing MQTT message:', e);
+            }
+        };
+
+        // MQTT Connection Lost Handler
+        client.onConnectionLost = (responseObject) => {
+            console.log("Connection lost");
+            updateConnectionStatus(false);
+        };
+
+        // Connect
+        client.connect({
+            useSSL: true,
+            onSuccess: () => {
+                console.log("Connected to MQTT");
+                updateConnectionStatus(true);
+                saveConfig();
+                // Switch to dashboard
+                document.getElementById('loginPage').classList.remove('active');
+                document.getElementById('dashboardPage').classList.remove('hidden');
+                // Subscribe to status topic
+                client.subscribe(mqttConfig.statusTopic);
+            },
+            onFailure: (error) => {
+                console.error("Connection failed:", error);
+                alert('Failed to connect to MQTT broker. Check your settings.');
+                updateConnectionStatus(false);
+            }
+        });
+    }
+
+    // Logout
+    function logout() {
+        if(client && client.isConnected()) {
+            client.disconnect();
+        }
+        document.getElementById('dashboardPage').classList.add('hidden');
+        document.getElementById('loginPage').classList.add('active');
+        updateConnectionStatus(false);
+    }
+
+    // Send MQTT Command
+    function sendMQTT(cmd) {
+        if(!client || !client.isConnected()) {
+            alert('Not connected to MQTT');
+            return;
+        }
+        try {
+            let msg = new Paho.MQTT.Message(cmd);
+            msg.destinationName = mqttConfig.controlTopic;
+            client.send(msg);
+            console.log("Sent: " + cmd);
+        } catch(e) {
+            console.error("Error sending MQTT:", e);
+        }
+    }
+
+    // Update UI based on state
+    function updateUI(data) {
+        // Update Fan UI
+        const fanIcon = document.getElementById('fanIcon');
+        const fanStatus = document.getElementById('fanStatus');
+        const btnFanOn = document.getElementById('btnFanOn');
+        const btnFanOff = document.getElementById('btnFanOff');
+        
+        if(data.fanEnabled) {
+            fanIcon.classList.add('spinning');
+            fanStatus.textContent = '✅ Fan is ON';
+            btnFanOn.classList.add('active-on');
+            btnFanOff.classList.remove('active-off');
+            document.getElementById('fanSlider').disabled = false;
+        } else {
+            fanIcon.classList.remove('spinning');
+            fanStatus.textContent = '❌ Fan is OFF';
+            btnFanOn.classList.remove('active-on');
+            btnFanOff.classList.add('active-off');
+            document.getElementById('fanSlider').disabled = true;
+        }
+        
+        // Update Fan Speed
+        document.getElementById('fanSlider').value = data.fanSpeed;
+        document.getElementById('speedLabel').textContent = data.fanSpeed + '%';
+
+        // Update Light 1 UI
+        const l1Icon = document.getElementById('light1Status');
+        const btnL1On = document.getElementById('btnL1On');
+        const btnL1Off = document.getElementById('btnL1Off');
+        
+        if(data.light1State) {
+            l1Icon.textContent = '🏠 Light 1: ON';
+            l1Icon.classList.add('light-glow');
+            btnL1On.classList.add('active-on');
+            btnL1Off.classList.remove('active-off');
+        } else {
+            l1Icon.textContent = '🏠 Light 1: OFF';
+            l1Icon.classList.remove('light-glow');
+            btnL1On.classList.remove('active-on');
+            btnL1Off.classList.add('active-off');
+        }
+
+        // Update Light 2 UI
+        const l2Icon = document.getElementById('light2Status');
+        const btnL2On = document.getElementById('btnL2On');
+        const btnL2Off = document.getElementById('btnL2Off');
+        
+        if(data.light2State) {
+            l2Icon.textContent = '🛏️ Light 2: ON';
+            l2Icon.classList.add('light-glow');
+            btnL2On.classList.add('active-on');
+            btnL2Off.classList.remove('active-off');
+        } else {
+            l2Icon.textContent = '🛏️ Light 2: OFF';
+            l2Icon.classList.remove('light-glow');
+            btnL2On.classList.remove('active-on');
+            btnL2Off.classList.add('active-off');
+        }
+    }
+
+    // Update connection status display
+    function updateConnectionStatus(connected) {
+        const status = document.getElementById('connectionStatus');
+        if(connected) {
+            status.textContent = '🟢 Connected to MQTT';
+            status.className = 'connection-status connected';
+        } else {
+            status.textContent = '🔴 Disconnected from MQTT';
+            status.className = 'connection-status disconnected';
+        }
+    }
+
+    // Initialize
+    window.addEventListener('load', () => {
+        loadConfig();
+    });
 </script>
 </body>
 </html>
