@@ -6,72 +6,74 @@
     <title>Smart Home Pro</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
-        :root { --bg: #0b0e14; --card: rgba(30, 41, 59, 0.7); --accent: #38bdf8; --on: #22c55e; --off: #ef4444; }
-        body { background: var(--bg); color: #fff; font-family: 'Inter', sans-serif; display: flex; justify-content: center; padding: 20px; margin: 0; }
+        :root { --bg: #0b0e14; --card: #1e293b; --accent: #38bdf8; --on: #22c55e; --off: #ef4444; }
+        body { background: var(--bg); color: #fff; font-family: sans-serif; display: flex; justify-content: center; padding: 20px; }
         .container { width: 100%; max-width: 400px; }
+        .card { background: var(--card); padding: 20px; border-radius: 20px; margin-bottom: 20px; box-shadow: 0 10px 20px rgba(0,0,0,0.3); }
+        .title { font-size: 14px; font-weight: bold; color: #94a3b8; margin-bottom: 15px; display: flex; justify-content: space-between; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; background: #334155; color: white; transition: 0.3s; }
+        .active-on { background: var(--on) !important; box-shadow: 0 0 15px rgba(34,197,94,0.4); }
+        .active-off { background: var(--off) !important; box-shadow: 0 0 15px rgba(239,68,68,0.4); }
         
-        .header { text-align: center; font-size: 28px; font-weight: 800; margin-bottom: 30px; background: linear-gradient(to right, #38bdf8, #818cf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-        
-        .card { background: var(--card); backdrop-filter: blur(10px); padding: 22px; border-radius: 24px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); transition: 0.3s; }
-        
-        .title { font-size: 14px; font-weight: 600; color: #94a3b8; margin-bottom: 15px; display: flex; justify-content: space-between; }
-        
-        button { width: 100%; padding: 14px; border: none; border-radius: 14px; font-weight: 700; cursor: pointer; color: #fff; background: #334155; transition: 0.3s; }
-        .active-on { background: var(--on) !important; box-shadow: 0 0 20px rgba(34,197,94,0.3); }
-        .active-off { background: var(--off) !important; box-shadow: 0 0 20px rgba(239,68,68,0.3); }
-        
-        .fan-icon { width: 70px; height: 70px; margin: 0 auto 15px; border: 4px solid #334155; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-        .spinning { animation: spin 2s linear infinite; border-color: var(--on); }
+        /* Animations */
+        .fan-icon { fill: #475569; transition: 0.5s; }
+        .spinning { animation: spin 1.5s linear infinite; fill: var(--on) !important; }
         @keyframes spin { 100% { transform: rotate(360deg); } }
         
-        input[type=range] { width: 100%; height: 6px; background: #334155; border-radius: 5px; outline: none; margin-top: 15px; -webkit-appearance: none; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 18px; height: 18px; background: var(--accent); border-radius: 50%; cursor: pointer; }
+        .light-icon { fill: #475569; transition: 0.3s; }
+        .glow { filter: drop-shadow(0 0 15px #fbbf24); fill: #fbbf24 !important; }
+
+        input[type=range] { width: 100%; margin-top: 15px; accent-color: var(--accent); }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <div class="header">Smart Home</div>
-
-    <!-- Fan -->
+    <h2 style="text-align:center;">Smart Home</h2>
+    
     <div class="card">
-        <div id="fan-icon" class="fan-icon"></div>
-        <div class="title">Fan Control <span id="speedVal" style="color:var(--accent);">50%</span></div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div style="display:flex; justify-content:center; margin-bottom:15px;">
+            <svg id="fanIcon" class="fan-icon" width="60" height="60" viewBox="0 0 100 100">
+                <path d="M50 50 L50 10 A40 40 0 0 1 90 50 Z M50 50 L90 50 A40 40 0 0 1 50 90 Z M50 50 L50 90 A40 40 0 0 1 10 50 Z M50 50 L10 50 A40 40 0 0 1 50 10 Z"/>
+            </svg>
+        </div>
+        <div class="title">Fan Control <span id="speedVal">50%</span></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
             <button id="btnFanOn" onclick="sendMQTT('FAN_ON')">ON</button>
             <button id="btnFanOff" onclick="sendMQTT('FAN_OFF')">OFF</button>
         </div>
         <input type="range" id="fanSlider" min="0" max="100" value="50" oninput="document.getElementById('speedVal').textContent = this.value + '%'" onchange="sendMQTT('SPEED_' + this.value)">
     </div>
 
-    <!-- Lights -->
     <div class="card">
-        <div class="title">Living Room Lights</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-            <button id="btnL1On" onclick="sendMQTT('L1_ON')">L1 ON</button>
-            <button id="btnL1Off" onclick="sendMQTT('L1_OFF')">L1 OFF</button>
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top: 12px;">
-            <button id="btnL2On" onclick="sendMQTT('L2_ON')">L2 ON</button>
-            <button id="btnL2Off" onclick="sendMQTT('L2_OFF')">L2 OFF</button>
+        <div class="title">Living Room</div>
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
+            <svg id="l1Icon" class="light-icon" width="30" height="30" viewBox="0 0 24 24"><path d="M12 2C8.13 2 5 5.13 5 9c0 2.38 1.19 4.47 3 5.74V17c0 .55.45 1 1 1h6c.55 0 1-.45 1-1v-2.26c1.81-1.27 3-3.36 3-5.74 0-3.87-3.13-7-7-7z"/></svg>
+            <div style="display:flex; gap:10px; width:60%;">
+                <button id="btnL1On" onclick="sendMQTT('L1_ON')">ON</button>
+                <button id="btnL1Off" onclick="sendMQTT('L1_OFF')">OFF</button>
+            </div>
         </div>
     </div>
 </div>
 
 <script>
     const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "web_" + Math.random().toString(16).substr(2,8));
-    
+
     client.onMessageArrived = (msg) => {
         const d = JSON.parse(msg.payloadString);
-        document.getElementById("fan-icon").className = d.fanEnabled ? "fan-icon spinning" : "fan-icon";
+        
+        // Update Fan
+        document.getElementById("fanIcon").className = d.fanEnabled ? "fan-icon spinning" : "fan-icon";
         document.getElementById("btnFanOn").className = d.fanEnabled ? "active-on" : "";
         document.getElementById("btnFanOff").className = !d.fanEnabled ? "active-off" : "";
-        document.getElementById("btnL1On").className = d.light1State ? "active-on" : "";
-        document.getElementById("btnL1Off").className = !d.light1State ? "active-off" : "";
-        document.getElementById("btnL2On").className = d.light2State ? "active-on" : "";
-        document.getElementById("btnL2Off").className = !d.light2State ? "active-off" : "";
         document.getElementById("fanSlider").value = d.fanSpeed;
         document.getElementById("speedVal").textContent = d.fanSpeed + "%";
+
+        // Update Light
+        document.getElementById("l1Icon").className = d.light1State ? "light-icon glow" : "light-icon";
+        document.getElementById("btnL1On").className = d.light1State ? "active-on" : "";
+        document.getElementById("btnL1Off").className = !d.light1State ? "active-off" : "";
     };
 
     client.connect({ useSSL: true, onSuccess: () => { client.subscribe("myuniquehome/status"); }});
