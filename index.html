@@ -2,104 +2,79 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Global Smart Home Dashboard</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Home Pro</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { background:#0f172a; font-family:'Segoe UI', sans-serif; color:#fff; display:flex; justify-content:center; padding:20px; }
-        .container { width:100%; max-width:400px; background:#1e293b; padding:20px; border-radius:16px; box-shadow:0 8px 32px rgba(0,0,0,0.5); }
-        .status-bar { text-align:center; padding:10px; margin-bottom:20px; border-radius:8px; font-weight:bold; font-size:13px; background:#334155; }
-        .connected { color:#22c55e; }
-        .disconnected { color:#ef4444; }
-        .card { background:#0f172a; padding:15px; border-radius:12px; margin-bottom:15px; border:1px solid #334155; }
-        .card-title { color:#60a5fa; font-weight:600; margin-bottom:10px; }
-        .button-group { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-        button { padding:12px; border:none; border-radius:8px; font-weight:bold; cursor:pointer; color:white; transition:0.3s; text-transform:uppercase; }
-        .btn-on { background:#475569; }
-        .btn-off { background:#475569; }
-        .active-on { background:#22c55e !important; }
-        .active-off { background:#ef4444 !important; }
-        .slider-container { margin-top:15px; }
-        input[type=range] { width:100%; cursor:pointer; }
+        :root { --bg: #0f172a; --card: #1e293b; --accent: #60a5fa; --on: #22c55e; --off: #ef4444; }
+        body { background: var(--bg); font-family: 'Segoe UI', sans-serif; color: #fff; display: flex; justify-content: center; padding: 20px; }
+        .container { width: 100%; max-width: 400px; }
+        
+        /* Status Glow */
+        .status-bar { text-align: center; padding: 10px; border-radius: 12px; background: #000; margin-bottom: 20px; font-size: 12px; border: 1px solid #334155; }
+        .glow { box-shadow: 0 0 15px rgba(34, 197, 94, 0.4); }
+
+        /* Cards & Buttons */
+        .card { background: var(--card); padding: 20px; border-radius: 20px; margin-bottom: 20px; transition: 0.4s; }
+        .card:hover { transform: translateY(-5px); }
+        
+        button { width: 100%; padding: 15px; border: none; border-radius: 12px; font-weight: bold; cursor: pointer; transition: 0.3s; margin-top: 10px; text-transform: uppercase; }
+        .btn-base { background: #334155; color: #94a3b8; }
+        
+        /* Active Animation */
+        .btn-on.active { background: var(--on); color: #fff; box-shadow: 0 0 20px rgba(34, 197, 94, 0.5); }
+        .btn-off.active { background: var(--off); color: #fff; box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); }
+
+        /* Fan Icon Animation */
+        .fan-icon { width: 60px; height: 60px; margin: 10px auto; display: block; border-radius: 50%; border: 3px solid #334155; }
+        .spinning { animation: spin 2s linear infinite; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h2 style="text-align:center; margin-bottom:15px;">Smart Home</h2>
-    <div id="connectionStatus" class="status-bar disconnected">CONNECTING...</div>
+    <h2 style="text-align:center;">Smart Home</h2>
+    <div id="connStatus" class="status-bar">Connecting...</div>
 
     <div class="card">
-        <div class="card-title" id="fanStatusText">Fan: OFF</div>
-        <div class="button-group">
-            <button id="btnFanOn" class="btn-on" onclick="sendMQTT('FAN_ON')">On</button>
-            <button id="btnFanOff" class="btn-off" onclick="sendMQTT('FAN_OFF')">Off</button>
-        </div>
-        <div class="slider-container">
-            <input type="range" id="fanSlider" min="0" max="100" value="50" disabled>
-        </div>
+        <div id="fan-glow" class="fan-icon"></div>
+        <button id="btnFanOn" class="btn-base btn-on" onclick="sendMQTT('FAN_ON')">Fan ON</button>
+        <button id="btnFanOff" class="btn-base btn-off" onclick="sendMQTT('FAN_OFF')">Fan OFF</button>
     </div>
 
     <div class="card">
-        <div class="card-title" id="l1StatusText">Light 1: OFF</div>
-        <div class="button-group">
-            <button id="btnL1On" class="btn-on" onclick="sendMQTT('L1_ON')">On</button>
-            <button id="btnL1Off" class="btn-off" onclick="sendMQTT('L1_OFF')">Off</button>
-        </div>
-    </div>
-
-    <div class="card">
-        <div class="card-title" id="l2StatusText">Light 2: OFF</div>
-        <div class="button-group">
-            <button id="btnL2On" class="btn-on" onclick="sendMQTT('L2_ON')">On</button>
-            <button id="btnL2Off" class="btn-off" onclick="sendMQTT('L2_OFF')">Off</button>
-        </div>
+        <h3 id="l1Text">Light 1</h3>
+        <button id="btnL1On" class="btn-base btn-on" onclick="sendMQTT('L1_ON')">L1 ON</button>
+        <button id="btnL1Off" class="btn-base btn-off" onclick="sendMQTT('L1_OFF')">L1 OFF</button>
     </div>
 </div>
 
 <script>
-    const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "web_" + Math.random().toString(16).substr(2, 8));
-
-    client.onConnectionLost = () => {
-        document.getElementById("connectionStatus").textContent = "DISCONNECTED";
-        document.getElementById("connectionStatus").className = "status-bar disconnected";
+    const client = new Paho.MQTT.Client("broker.hivemq.com", 8884, "web_" + Math.random().toString(16).substr(2,8));
+    
+    client.onMessageArrived = (msg) => {
+        const data = JSON.parse(msg.payloadString);
+        
+        // Fan Animation
+        document.getElementById("fan-glow").className = data.fanEnabled ? "fan-icon spinning" : "fan-icon";
+        
+        // Button States
+        document.getElementById("btnFanOn").classList.toggle("active", data.fanEnabled);
+        document.getElementById("btnFanOff").classList.toggle("active", !data.fanEnabled);
+        document.getElementById("btnL1On").classList.toggle("active", data.light1State);
+        document.getElementById("btnL1Off").classList.toggle("active", !data.light1State);
     };
 
-    client.onMessageArrived = (message) => {
-        const data = JSON.parse(message.payloadString);
-        
-        // Update UI
-        document.getElementById('fanStatusText').textContent = "Fan: " + (data.fanEnabled ? "ON" : "OFF");
-        document.getElementById('l1StatusText').textContent = "Light 1: " + (data.light1State ? "ON" : "OFF");
-        document.getElementById('l2StatusText').textContent = "Light 2: " + (data.light2State ? "ON" : "OFF");
-        
-        document.getElementById('btnFanOn').className = data.fanEnabled ? "btn-on active-on" : "btn-on";
-        document.getElementById('btnFanOff').className = !data.fanEnabled ? "btn-off active-off" : "btn-off";
-        
-        document.getElementById('btnL1On').className = data.light1State ? "btn-on active-on" : "btn-on";
-        document.getElementById('btnL1Off').className = !data.light1State ? "btn-off active-off" : "btn-off";
-        
-        document.getElementById('btnL2On').className = data.light2State ? "btn-on active-on" : "btn-on";
-        document.getElementById('btnL2Off').className = !data.light2State ? "btn-off active-off" : "btn-off";
-    };
-
-    client.connect({
-        useSSL: true,
-        onSuccess: () => {
-            document.getElementById("connectionStatus").textContent = "ONLINE (SECURE)";
-            document.getElementById("connectionStatus").className = "status-bar connected";
-            client.subscribe("myuniquehome/status");
-        }
-    });
+    client.connect({ useSSL: true, onSuccess: () => {
+        document.getElementById("connStatus").innerHTML = "<span style='color:var(--on)'>● ONLINE</span>";
+        client.subscribe("myuniquehome/status");
+    }});
 
     function sendMQTT(cmd) {
-        if(client.isConnected()) {
-            let message = new Paho.MQTT.Message(cmd);
-            message.destinationName = "myuniquehome/control";
-            client.send(message);
-        }
+        let msg = new Paho.MQTT.Message(cmd);
+        msg.destinationName = "myuniquehome/control";
+        client.send(msg);
     }
 </script>
 </body>
