@@ -77,12 +77,12 @@
 <script>
     // ===== MQTT CONFIGURATION (ESP8266 এর সাথে মিল রেখে) =====
     const MQTT_HOST = "broker.hivemq.com"; 
-    const MQTT_PORT = 8883; // HiveMQ পাবলিক ব্রোকারের স্ট্যান্ডার্ড WebSockets পোর্ট (Non-SSL)
+    const MQTT_PORT = 8000; // HiveMQ পাবলিক ব্রোকারের স্ট্যান্ডার্ড WebSockets পোর্ট (Non-SSL)
     const MQTT_CLIENT_ID = "web_client_" + Math.random().toString(16).substr(2, 8);
     
     // 💡 আপনার সিকিউর ব্রোকারের ইউজারনেম এবং পাসওয়ার্ড এখানে দিন (যদি ব্যবহার করেন)
-    const MQTT_USER = "your_mqtt_username"; 
-    const MQTT_PASS = "your_mqtt_password"; 
+    const MQTT_USER = "Masum_Home"; 
+    const MQTT_PASS = "12345678"; 
 
     const TOPIC_SUB = "myuniquehome/status";  // ESP8266 এই টপিকে ডাটা পাঠায়
     const TOPIC_PUB = "myuniquehome/control"; // ESP8266 এই টপিক থেকে কমান্ড শোনে
