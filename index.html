@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Smart Home Pro | Mobile Dashboard</title>
+    <title>Smart Home Pro | Persistent MQTT</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         :root { 
@@ -26,7 +26,6 @@
             min-height: 100vh; 
             padding: 12px; 
         }
-        /* mobile-first container: uses full width with gentle max-width for large phones */
         .container { 
             width: 100%; 
             max-width: 500px; 
@@ -51,7 +50,6 @@
             border-radius: 24px; 
             box-shadow: 0 8px 24px rgba(0,0,0,0.5);
             transition: all 0.2s ease;
-            backdrop-filter: blur(2px);
             border: 1px solid rgba(56, 189, 248, 0.1);
         }
         .card-title { 
@@ -83,13 +81,11 @@
         .active-on { background: var(--on) !important; box-shadow: 0 0 12px var(--glow-on) !important; }
         .active-off { background: var(--off) !important; box-shadow: 0 0 12px var(--glow-off) !important; }
         
-        /* FAN ANIMATIONS */
         .fan-container { display: flex; justify-content: center; align-items: center; margin-bottom: 12px; }
         .fan-icon { width: 80px; height: 80px; fill: #475569; transition: fill 0.2s ease; }
         .spinning { animation: spin 0.7s linear infinite; fill: var(--on) !important; filter: drop-shadow(0 0 6px #22c55e); }
         @keyframes spin { 100% { transform: rotate(360deg); } }
         
-        /* LIGHT ANIMATIONS */
         .light-item { background: #0f172a; border-radius: 18px; padding: 12px 14px; margin: 12px 0 0 0; border: 1px solid #334155; transition: all 0.2s; }
         .light-label { font-size: 15px; font-weight: 600; color: #e2e8f0; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; transition: color 0.2s; }
         .light-glow { color: #fbbf24 !important; text-shadow: 0 0 6px #fbbf24; }
@@ -100,7 +96,7 @@
         .slider-container { padding: 6px 0 4px; display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
         .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: #94a3b8; font-weight: 500; }
         input[type=range] { width: 100%; height: 6px; border-radius: 10px; background: #334155; outline: none; -webkit-appearance: none; accent-color: var(--accent); }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #22c55e; cursor: pointer; box-shadow: 0 0 8px #22c55e; border: 2px solid white; transition: 0.1s; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 20px; height: 20px; border-radius: 50%; background: #22c55e; cursor: pointer; box-shadow: 0 0 8px #22c55e; border: 2px solid white; }
         input[type=range]::-moz-range-thumb { width: 20px; height: 20px; border-radius: 50%; background: #22c55e; cursor: pointer; border: 2px solid white; }
         input[type=range]:disabled { opacity: 0.45; cursor: not-allowed; }
 
@@ -108,9 +104,9 @@
         .connected { color: #22c55e; background: #0f172a; border-left: 3px solid #22c55e; }
         .disconnected { color: #f87171; background: #0f172a; border-left: 3px solid #ef4444; }
 
-        /* LOGIN PAGE STYLES - mobile optimized */
-        .login-page { display: none; justify-content: center; align-items: center; width: 100%; }
-        .login-page.active { display: flex; }
+        /* LOGIN PAGE - shown first */
+        .login-page { display: flex; justify-content: center; align-items: center; width: 100%; min-height: 80vh; }
+        .login-page.hidden { display: none; }
         .login-container { width: 100%; max-width: 440px; }
         .login-form { display: flex; flex-direction: column; gap: 16px; }
         input[type="text"] { 
@@ -123,7 +119,6 @@
         .login-btn { background: #f59e0b !important; border-radius: 60px; margin-top: 8px; font-weight: 700; }
         .logout-btn { background: #ef4444 !important; font-size: 12px; padding: 10px 16px; border-radius: 40px; width: auto; min-width: 90px; margin: 0; text-transform: capitalize; letter-spacing: normal; font-weight: 600; }
 
-        /* dashboard header with refresh + logout */
         .dashboard-header {
             display: flex;
             justify-content: space-between;
@@ -164,41 +159,51 @@
             font-weight: 600;
             letter-spacing: normal;
             box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            transition: 0.2s;
         }
         .refresh-btn:active { transform: scale(0.94); }
-        .refresh-icon {
-            font-size: 16px;
-            font-weight: bold;
-            display: inline-block;
-        }
+        .refresh-icon { font-size: 16px; font-weight: bold; display: inline-block; }
         .dashboard-page { display: flex; flex-direction: column; gap: 16px; width: 100%; }
         .dashboard-page.hidden { display: none; }
         
-        /* small tweaks for better mobile touch */
-        button, .refresh-btn, .logout-btn { touch-action: manipulation; cursor: pointer; }
         @media (max-width: 450px) {
             .card { padding: 16px; }
             .button-group button { padding: 11px 0; font-size: 13px; }
             .refresh-btn { padding: 8px 12px !important; }
             .logout-btn { padding: 8px 12px !important; }
-            .dashboard-header { margin-bottom: 4px; }
-            .header-title h1 { font-size: 24px; }
         }
-        /* Fix for fan icon alignment */
         .fan-icon { display: block; margin: 0 auto; }
         .light-item:first-child { margin-top: 0; }
+        
+        /* Reconnect overlay / toast */
+        .toast-msg {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #1e293b;
+            color: #facc15;
+            padding: 10px 20px;
+            border-radius: 50px;
+            font-size: 13px;
+            font-weight: 500;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            pointer-events: none;
+            transition: opacity 0.3s;
+            backdrop-filter: blur(8px);
+            border-left: 3px solid #facc15;
+        }
     </style>
 </head>
 <body>
 
-<!-- LOGIN PAGE -->
-<div class="login-page active" id="loginPage">
+<!-- LOGIN PAGE (visible first, only shows until connected) -->
+<div class="login-page" id="loginPage">
     <div class="login-container">
-        <div class="header" style="margin-bottom: 8px;">🔐 Smart Home Pro</div>
+        <div class="header" style="margin-bottom: 8px;">🏠 Smart Home Pro</div>
         
         <div class="card">
-            <div class="card-title">🌐 MQTT Configuration</div>
+            <div class="card-title">🌐 MQTT Connection Setup</div>
             
             <div class="login-form">
                 <div class="form-group">
@@ -211,30 +216,28 @@
                     <input type="text" id="controlTopic" placeholder="e.g., home/control" autocomplete="off">
                 </div>
 
-                <button class="login-btn" onclick="connectMQTT()">🚀 Connect & Launch</button>
+                <button class="login-btn" id="connectBtn" onclick="handleConnectAndLogin()">🔌 Connect & Enter Dashboard</button>
             </div>
         </div>
 
         <div style="text-align: center; font-size: 12px; color: #94a3b8; margin-top: 16px; background: #0f172a80; padding: 10px; border-radius: 40px;">
-            💡 MQTT broker: broker.hivemq.com (secure)
+            💡 Persistent connection • Always stays connected
         </div>
     </div>
 </div>
 
-<!-- DASHBOARD PAGE with new refresh button positioned at top-right corner -->
+<!-- DASHBOARD PAGE (hidden until connected) -->
 <div class="dashboard-page hidden" id="dashboardPage">
     <div class="container">
-        <!-- Header with refresh button & logout aligned right -->
         <div class="dashboard-header">
             <div class="header-title">
                 <h1>⚙️ Smart Home</h1>
             </div>
             <div class="action-buttons">
-                <!-- Refresh Button (new) -->
-                <button class="refresh-btn" id="refreshDashboardBtn" onclick="refreshDashboardState()">
+                <button class="refresh-btn" id="refreshDashboardBtn" onclick="manualRefresh()">
                     <span class="refresh-icon">🔄</span> Refresh
                 </button>
-                <button class="logout-btn" onclick="logout()">🚪 Logout</button>
+                <button class="logout-btn" onclick="disconnectAndLogout()">🚪 Logout</button>
             </div>
         </div>
         
@@ -254,13 +257,13 @@
             </div>
             <div class="status-text" id="fanStatus">Fan is OFF</div>
             <div class="button-group">
-                <button id="btnFanOn" onclick="sendMQTT('FAN_ON')">ON</button>
-                <button id="btnFanOff" class="active-off" onclick="sendMQTT('FAN_OFF')">OFF</button>
+                <button id="btnFanOn" onclick="sendCommand('FAN_ON')">ON</button>
+                <button id="btnFanOff" class="active-off" onclick="sendCommand('FAN_OFF')">OFF</button>
             </div>
             
             <div class="slider-container">
                 <div class="slider-label"><span>🌀 Speed</span><span id="speedLabel">50%</span></div>
-                <input type="range" id="fanSlider" min="0" max="100" value="50" disabled oninput="document.getElementById('speedLabel').textContent = this.value + '%'" onchange="sendMQTT('SPEED_' + this.value)">
+                <input type="range" id="fanSlider" min="0" max="100" value="50" disabled oninput="document.getElementById('speedLabel').textContent = this.value + '%'" onchange="sendCommand('SPEED_' + this.value)">
             </div>
         </div>
 
@@ -270,41 +273,44 @@
                 <span>💡 Smart Lights</span>
             </div>
             
-            <!-- Light 1 -->
             <div class="light-item">
                 <div class="light-label" id="light1Status">🏠 Light 1: OFF</div>
                 <div class="button-group">
-                    <button id="btnL1On" onclick="sendMQTT('L1_ON')">ON</button>
-                    <button id="btnL1Off" class="active-off" onclick="sendMQTT('L1_OFF')">OFF</button>
+                    <button id="btnL1On" onclick="sendCommand('L1_ON')">ON</button>
+                    <button id="btnL1Off" class="active-off" onclick="sendCommand('L1_OFF')">OFF</button>
                 </div>
             </div>
 
-            <!-- Light 2 -->
             <div class="light-item">
                 <div class="light-label" id="light2Status">🛏️ Light 2: OFF</div>
                 <div class="button-group">
-                    <button id="btnL2On" onclick="sendMQTT('L2_ON')">ON</button>
-                    <button id="btnL2Off" class="active-off" onclick="sendMQTT('L2_OFF')">OFF</button>
+                    <button id="btnL2On" onclick="sendCommand('L2_ON')">ON</button>
+                    <button id="btnL2Off" class="active-off" onclick="sendCommand('L2_OFF')">OFF</button>
                 </div>
             </div>
         </div>
 
-        <!-- CONNECTION STATUS -->
         <div class="connection-status" id="connectionStatus">
-            🔴 Connecting to MQTT...
+            🔄 Establishing persistent MQTT...
         </div>
     </div>
 </div>
 
 <script>
-    let client = null;
+    // ---------- PERSISTENT MQTT GLOBAL ----------
+    let mqttClient = null;
+    let isConnectedFlag = false;
+    let reconnectAttempts = 0;
+    let reconnectTimer = null;
+    
+    // MQTT configuration from localStorage or new
     let mqttConfig = {
         broker: "broker.hivemq.com",
         port: 8884,
         statusTopic: "",
         controlTopic: ""
     };
-
+    
     let currentState = {
         fanEnabled: false,
         fanSpeed: 50,
@@ -312,215 +318,29 @@
         light2State: false
     };
     
-    // Flag to avoid spamming refresh if already loading
-    let isRefreshing = false;
-
-    // Load saved config from localStorage
-    function loadConfig() {
-        const saved = localStorage.getItem('mqttConfig');
-        if(saved) {
-            try {
-                mqttConfig = JSON.parse(saved);
-                document.getElementById('statusTopic').value = mqttConfig.statusTopic || "";
-                document.getElementById('controlTopic').value = mqttConfig.controlTopic || "";
-                // auto-connect only if both topics exist
-                if(mqttConfig.statusTopic && mqttConfig.controlTopic) {
-                    connectMQTT();
-                }
-            } catch(e) { console.warn(e); }
+    // DOM elements cache
+    let loginPage, dashboardPage, connectBtn;
+    
+    // Helper: show toast notification
+    function showToast(msg, isError = false) {
+        let toast = document.querySelector('.toast-msg');
+        if(!toast) {
+            toast = document.createElement('div');
+            toast.className = 'toast-msg';
+            document.body.appendChild(toast);
         }
-    }
-
-    // Save config to localStorage
-    function saveConfig() {
-        localStorage.setItem('mqttConfig', JSON.stringify(mqttConfig));
-    }
-
-    // Connect to MQTT (callback)
-    function connectMQTT() {
-        const statusTopicInput = document.getElementById('statusTopic').value.trim();
-        const controlTopicInput = document.getElementById('controlTopic').value.trim();
-
-        if(!statusTopicInput || !controlTopicInput) {
-            alert('Please fill both Status Topic and Control Topic fields');
-            return;
-        }
-
-        mqttConfig.statusTopic = statusTopicInput;
-        mqttConfig.controlTopic = controlTopicInput;
-
-        // Cleanup previous client if any
-        if(client && client.isConnected) {
-            try { client.disconnect(); } catch(e) {}
-        }
-
-        // Create new MQTT client with unique ID
-        const clientId = "web_" + Math.random().toString(36).substr(2, 10);
-        client = new Paho.MQTT.Client(
-            mqttConfig.broker,
-            mqttConfig.port,
-            clientId
-        );
-
-        // MQTT Message Handler - receives JSON state payload
-        client.onMessageArrived = (msg) => {
-            try {
-                const payload = msg.payloadString;
-                let data;
-                // Try to parse as JSON object first
-                if(payload.startsWith("{") || payload.startsWith("[")) {
-                    data = JSON.parse(payload);
-                } else {
-                    // fallback: handle plain commands? but spec expects JSON
-                    console.warn("non-json received, ignoring", payload);
-                    return;
-                }
-                // Update internal state
-                if (typeof data.fanEnabled !== 'undefined') currentState.fanEnabled = data.fanEnabled;
-                if (typeof data.fanSpeed !== 'undefined') currentState.fanSpeed = data.fanSpeed;
-                if (typeof data.light1State !== 'undefined') currentState.light1State = data.light1State;
-                if (typeof data.light2State !== 'undefined') currentState.light2State = data.light2State;
-                
-                updateUI(currentState);
-            } catch(e) {
-                console.error('Error parsing MQTT message:', e);
-            }
-        };
-
-        client.onConnectionLost = (responseObject) => {
-            console.log("MQTT connection lost", responseObject);
-            updateConnectionStatus(false);
-        };
-
-        // Connect
-        client.connect({
-            useSSL: true,
-            timeout: 10,
-            onSuccess: () => {
-                console.log("MQTT Connected");
-                updateConnectionStatus(true);
-                saveConfig();
-                // Switch to dashboard UI
-                document.getElementById('loginPage').classList.remove('active');
-                document.getElementById('dashboardPage').classList.remove('hidden');
-                // Subscribe to status topic
-                client.subscribe(mqttConfig.statusTopic, {qos: 0});
-                // after successful subscription, we may request initial state via a refresh command? 
-                // but broker may already retain; optionally send a 'REQ_STATE' command to simulate request if needed
-                // For better UX, we optionally send a lightweight request for state if your backend supports GET_STATUS
-                // but the user can tap refresh to manually fetch latest status.
-                // we also send a generic "REFRESH" command to notify device to republish status (if implemented)
-                sendMQTTSilent("GET_STATUS");
-            },
-            onFailure: (error) => {
-                console.error("MQTT connection failure:", error);
-                alert(`Connection failed: ${error.errorMessage || 'Check broker or topics'}`);
-                updateConnectionStatus(false);
-            }
-        });
-    }
-
-    // send MQTT command with silent error handling (for refresh action)
-    function sendMQTTSilent(cmd) {
-        if(!client || !client.isConnected()) return false;
-        try {
-            let msg = new Paho.MQTT.Message(cmd);
-            msg.destinationName = mqttConfig.controlTopic;
-            client.send(msg);
-            return true;
-        } catch(e) { return false; }
-    }
-
-    // Public send command with feedback alert if disconnected
-    function sendMQTT(cmd) {
-        if(!client || !client.isConnected()) {
-            alert('MQTT not connected. Please reconnect from login or check connection.');
-            return;
-        }
-        try {
-            let msg = new Paho.MQTT.Message(cmd);
-            msg.destinationName = mqttConfig.controlTopic;
-            client.send(msg);
-            console.log("Sent command: " + cmd);
-        } catch(e) {
-            console.error("Send error:", e);
-            alert("Failed to send command");
-        }
-    }
-
-    // REFRESH FUNCTIONALITY: Requests latest state via MQTT by publishing a "REFRESH" or "STATE_REQ" command
-    // Also we can optionally re-subscribe or trigger a status republish from the simulated device.
-    // The refresh button sends a custom REFRESH command. If the backend supports it, it will re-publish current state to status topic.
-    // We also add small visual feedback: button shows "Refreshing..." momentarily.
-    function refreshDashboardState() {
-        if(!client || !client.isConnected()) {
-            alert("MQTT not connected. Can't refresh. Please reconnect.");
-            return;
-        }
-        const refreshBtn = document.getElementById('refreshDashboardBtn');
-        if(!refreshBtn) return;
-        const originalText = refreshBtn.innerHTML;
-        refreshBtn.innerHTML = '<span class="refresh-icon">⏳</span> Syncing...';
-        refreshBtn.disabled = true;
-        
-        // Publish a refresh request command. Typically convention: "REFRESH_STATE" or "GET_STATUS"
-        const sent = sendMQTTSilent("REFRESH_STATE");
-        if(!sent) {
-            refreshBtn.innerHTML = originalText;
-            refreshBtn.disabled = false;
-            alert("Unable to send refresh request.");
-            return;
-        }
-        
-        // Additionally, we also set a timeout to re-enable button after 1 second
+        toast.textContent = msg;
+        toast.style.color = isError ? '#ffb4a2' : '#bef264';
+        toast.style.borderLeftColor = isError ? '#ef4444' : '#22c55e';
+        toast.style.opacity = '1';
         setTimeout(() => {
-            if(refreshBtn) {
-                refreshBtn.innerHTML = originalText;
-                refreshBtn.disabled = false;
-            }
-        }, 1000);
-        
-        // Since some implementations might not publish on REFRESH, we also (optional) manually request via GET_STATUS
-        sendMQTTSilent("GET_STATUS");
-        
-        // Show a temporary status notification on connection bar
-        const connDiv = document.getElementById('connectionStatus');
-        if(connDiv) {
-            const originalMsg = connDiv.innerHTML;
-            connDiv.innerHTML = "🔄 Refreshing dashboard...";
-            setTimeout(() => {
-                if(connDiv && client && client.isConnected()) {
-                    connDiv.innerHTML = "🟢 Connected · Last refresh sent";
-                    setTimeout(() => {
-                        if(connDiv && client?.isConnected()) connDiv.innerHTML = "🟢 Connected to MQTT";
-                        else if(connDiv && (!client || !client.isConnected())) connDiv.innerHTML = "🔴 Disconnected";
-                    }, 1800);
-                } else if(connDiv && (!client || !client.isConnected())) {
-                    connDiv.innerHTML = "🔴 Disconnected from MQTT";
-                }
-            }, 1200);
-        }
+            toast.style.opacity = '0';
+        }, 2800);
     }
-
-    // Logout
-    function logout() {
-        if(client && client.isConnected()) {
-            try {
-                client.disconnect();
-            } catch(e) {}
-        }
-        client = null;
-        document.getElementById('dashboardPage').classList.add('hidden');
-        document.getElementById('loginPage').classList.add('active');
-        updateConnectionStatus(false);
-        // reset UI to defaults (clear any stale UI)
-        const defaultState = { fanEnabled: false, fanSpeed: 50, light1State: false, light2State: false };
-        updateUI(defaultState);
-    }
-
-    // Update UI based on state object
-    function updateUI(data) {
-        // Fan UI
+    
+    // Update UI from currentState
+    function refreshUI() {
+        // Fan
         const fanIcon = document.getElementById('fanIcon');
         const fanStatus = document.getElementById('fanStatus');
         const btnFanOn = document.getElementById('btnFanOn');
@@ -528,10 +348,9 @@
         const fanSlider = document.getElementById('fanSlider');
         const speedSpan = document.getElementById('speedLabel');
         
-        if(data.fanEnabled) {
+        if(currentState.fanEnabled) {
             fanIcon.classList.add('spinning');
             fanStatus.textContent = '🌀 Fan is ON';
-            fanStatus.style.background = "#0f172a80";
             btnFanOn.classList.add('active-on');
             btnFanOff.classList.remove('active-off');
             fanSlider.disabled = false;
@@ -543,15 +362,15 @@
             fanSlider.disabled = true;
         }
         
-        const speedVal = data.fanSpeed !== undefined ? data.fanSpeed : 50;
-        fanSlider.value = speedVal;
-        speedSpan.textContent = speedVal + '%';
+        const spd = currentState.fanSpeed;
+        fanSlider.value = spd;
+        speedSpan.textContent = spd + '%';
         
         // Light 1
         const l1label = document.getElementById('light1Status');
         const btnL1On = document.getElementById('btnL1On');
         const btnL1Off = document.getElementById('btnL1Off');
-        if(data.light1State) {
+        if(currentState.light1State) {
             l1label.innerHTML = '🏠 Light 1: ON ✨';
             l1label.classList.add('light-glow');
             btnL1On.classList.add('active-on');
@@ -562,12 +381,12 @@
             btnL1On.classList.remove('active-on');
             btnL1Off.classList.add('active-off');
         }
-
+        
         // Light 2
         const l2label = document.getElementById('light2Status');
         const btnL2On = document.getElementById('btnL2On');
         const btnL2Off = document.getElementById('btnL2Off');
-        if(data.light2State) {
+        if(currentState.light2State) {
             l2label.innerHTML = '🛏️ Light 2: ON ✨';
             l2label.classList.add('light-glow');
             btnL2On.classList.add('active-on');
@@ -579,29 +398,257 @@
             btnL2Off.classList.add('active-off');
         }
     }
-
-    // Update connection status display (green/red)
-    function updateConnectionStatus(connected) {
+    
+    // Update connection status in dashboard + handle reconnection visibility
+    function updateConnectionUI(connected) {
         const statusDiv = document.getElementById('connectionStatus');
         if(!statusDiv) return;
         if(connected) {
-            statusDiv.innerHTML = '🟢 Connected to MQTT · Live';
+            statusDiv.innerHTML = '🟢 MQTT Connected · Live persistent';
             statusDiv.className = 'connection-status connected';
         } else {
-            statusDiv.innerHTML = '🔴 Disconnected from MQTT · Re-login required';
+            statusDiv.innerHTML = '🔴 Reconnecting... (persistent)';
             statusDiv.className = 'connection-status disconnected';
         }
     }
-
-    // Edge: if user returns from background, no need to reconnect, but ensure UI sync
+    
+    // send command via MQTT
+    function sendCommand(cmd) {
+        if(!mqttClient || !isConnectedFlag) {
+            showToast("Not connected to MQTT. Please wait for reconnect or re-login.", true);
+            return;
+        }
+        try {
+            let msg = new Paho.MQTT.Message(cmd);
+            msg.destinationName = mqttConfig.controlTopic;
+            mqttClient.send(msg);
+            console.log("📤 Sent:", cmd);
+            // Provide immediate visual feedback but wait for state via status topic
+            if(cmd === 'FAN_ON') showToast("Fan ON command sent", false);
+            else if(cmd === 'FAN_OFF') showToast("Fan OFF command sent", false);
+            else if(cmd.startsWith('L1_ON')) showToast("Light 1 ON", false);
+            else if(cmd.startsWith('L1_OFF')) showToast("Light 1 OFF", false);
+            else if(cmd.startsWith('L2_ON')) showToast("Light 2 ON", false);
+            else if(cmd.startsWith('L2_OFF')) showToast("Light 2 OFF", false);
+            else if(cmd.startsWith('SPEED_')) showToast(`Speed set to ${cmd.split('_')[1]}%`, false);
+        } catch(e) {
+            console.error("Send error", e);
+            showToast("Send failed", true);
+        }
+    }
+    
+    // manual refresh: request current state
+    function manualRefresh() {
+        if(!mqttClient || !isConnectedFlag) {
+            showToast("Not connected, can't refresh", true);
+            return;
+        }
+        sendCommand("REFRESH_STATE");
+        sendCommand("GET_STATUS");
+        showToast("🔄 Refresh requested", false);
+        const btn = document.getElementById('refreshDashboardBtn');
+        if(btn) {
+            const original = btn.innerHTML;
+            btn.innerHTML = '<span class="refresh-icon">⏳</span> Syncing...';
+            setTimeout(() => { if(btn) btn.innerHTML = original; }, 800);
+        }
+    }
+    
+    // Message handler: parse JSON state update
+    function onMessageArrived(message) {
+        try {
+            const payload = message.payloadString;
+            let newState = null;
+            if(payload.startsWith('{')) {
+                newState = JSON.parse(payload);
+            } else {
+                // sometimes raw commands might arrive, ignore
+                return;
+            }
+            if(newState) {
+                if(typeof newState.fanEnabled !== 'undefined') currentState.fanEnabled = newState.fanEnabled;
+                if(typeof newState.fanSpeed !== 'undefined') currentState.fanSpeed = newState.fanSpeed;
+                if(typeof newState.light1State !== 'undefined') currentState.light1State = newState.light1State;
+                if(typeof newState.light2State !== 'undefined') currentState.light2State = newState.light2State;
+                refreshUI();
+            }
+        } catch(e) { console.warn("Parse error", e); }
+    }
+    
+    // MQTT connection loss handler -> auto reconnect with exponential backoff
+    function onConnectionLost(response) {
+        console.warn("MQTT connection lost", response);
+        isConnectedFlag = false;
+        updateConnectionUI(false);
+        if(reconnectTimer) clearTimeout(reconnectTimer);
+        // persistent reconnect strategy: always try to reconnect (unless logout)
+        if(mqttConfig.statusTopic && mqttConfig.controlTopic) {
+            reconnectAttempts++;
+            let delay = Math.min(5000, 1000 * Math.pow(1.5, reconnectAttempts));
+            showToast(`Connection lost. Reconnecting in ${Math.round(delay/1000)}s...`, true);
+            reconnectTimer = setTimeout(() => {
+                establishMQTTConnection();
+            }, delay);
+        }
+    }
+    
+    // Function to create and connect MQTT client
+    function establishMQTTConnection() {
+        if(!mqttConfig.statusTopic || !mqttConfig.controlTopic) {
+            return false;
+        }
+        if(mqttClient && mqttClient.isConnected()) {
+            return true;
+        }
+        if(mqttClient) {
+            try { mqttClient.disconnect(); } catch(e) {}
+        }
+        const clientId = "smart_home_pro_" + Math.random().toString(36).substring(2, 10);
+        mqttClient = new Paho.MQTT.Client(mqttConfig.broker, mqttConfig.port, clientId);
+        mqttClient.onMessageArrived = onMessageArrived;
+        mqttClient.onConnectionLost = onConnectionLost;
+        
+        mqttClient.connect({
+            useSSL: true,
+            timeout: 10,
+            onSuccess: () => {
+                console.log("✅ MQTT persistent connected");
+                isConnectedFlag = true;
+                reconnectAttempts = 0;
+                updateConnectionUI(true);
+                mqttClient.subscribe(mqttConfig.statusTopic, {qos: 0});
+                // after reconnect request current state from device
+                setTimeout(() => {
+                    sendCommand("REFRESH_STATE");
+                    sendCommand("GET_STATUS");
+                }, 300);
+                showToast("MQTT connected & persistent", false);
+            },
+            onFailure: (err) => {
+                console.error("Connection failure", err);
+                isConnectedFlag = false;
+                updateConnectionUI(false);
+                if(reconnectTimer) clearTimeout(reconnectTimer);
+                reconnectTimer = setTimeout(() => {
+                    establishMQTTConnection();
+                }, 4000);
+            }
+        });
+        return true;
+    }
+    
+    // Called from login button: store topics, try to connect, if success switch to dashboard
+    function handleConnectAndLogin() {
+        const statusTopicVal = document.getElementById('statusTopic').value.trim();
+        const controlTopicVal = document.getElementById('controlTopic').value.trim();
+        if(!statusTopicVal || !controlTopicVal) {
+            alert("Please fill both Status Topic and Control Topic");
+            return;
+        }
+        // save config
+        mqttConfig.statusTopic = statusTopicVal;
+        mqttConfig.controlTopic = controlTopicVal;
+        localStorage.setItem('mqttConfig', JSON.stringify(mqttConfig));
+        
+        const btn = document.getElementById('connectBtn');
+        btn.textContent = "🔌 Connecting...";
+        btn.disabled = true;
+        
+        // ensure any previous client is disposed
+        if(mqttClient) {
+            try { mqttClient.disconnect(); } catch(e) {}
+            mqttClient = null;
+        }
+        isConnectedFlag = false;
+        
+        // attempt connection
+        const successConn = establishMQTTConnection();
+        // wait for connection success or failure via callback
+        let connectionTimeout = setTimeout(() => {
+            if(!isConnectedFlag) {
+                btn.textContent = "🔌 Connect & Enter Dashboard";
+                btn.disabled = false;
+                alert("Connection failed. Check topics or broker availability.");
+            }
+        }, 8000);
+        
+        // check after a short interval if connection succeeded
+        const checkInterval = setInterval(() => {
+            if(isConnectedFlag && mqttClient && mqttClient.isConnected()) {
+                clearInterval(checkInterval);
+                clearTimeout(connectionTimeout);
+                btn.disabled = false;
+                // switch UI: hide login, show dashboard
+                document.getElementById('loginPage').classList.add('hidden');
+                document.getElementById('dashboardPage').classList.remove('hidden');
+                refreshUI();
+                showToast("Connected! Dashboard ready", false);
+            }
+        }, 200);
+    }
+    
+    // Logout: disconnect MQTT, clear localStorage config but keep topics visible? Clear connection and show login again
+    function disconnectAndLogout() {
+        if(reconnectTimer) clearTimeout(reconnectTimer);
+        if(mqttClient && mqttClient.isConnected()) {
+            try {
+                mqttClient.disconnect();
+            } catch(e) {}
+        }
+        mqttClient = null;
+        isConnectedFlag = false;
+        // Do NOT remove saved topics from localStorage, but we reset the UI to login
+        document.getElementById('dashboardPage').classList.add('hidden');
+        document.getElementById('loginPage').classList.remove('hidden');
+        // reset login fields to stored values
+        const saved = localStorage.getItem('mqttConfig');
+        if(saved) {
+            try {
+                const cfg = JSON.parse(saved);
+                document.getElementById('statusTopic').value = cfg.statusTopic || '';
+                document.getElementById('controlTopic').value = cfg.controlTopic || '';
+            } catch(e) {}
+        }
+        // reset current state visual (for next login)
+        currentState = { fanEnabled: false, fanSpeed: 50, light1State: false, light2State: false };
+        showToast("Logged out. MQTT disconnected.", false);
+    }
+    
+    // On page load: show login screen, auto-load previous config but NOT auto-connect.
+    // User must click "Connect". No background auto-connect until login action.
+    // This solves "first open home page then anyone click login". Perfect.
     window.addEventListener('load', () => {
-        loadConfig();
-        // If there's already an existing client that might be stale, avoid double
-        // but loadConfig triggers auto-connect if config exists.
+        loginPage = document.getElementById('loginPage');
+        dashboardPage = document.getElementById('dashboardPage');
+        // Ensure dashboard is hidden initially, login visible
+        dashboardPage.classList.add('hidden');
+        loginPage.classList.remove('hidden');
+        
+        // Load saved topics into input fields if exist (so user doesn't retype)
+        const savedConfig = localStorage.getItem('mqttConfig');
+        if(savedConfig) {
+            try {
+                const cfg = JSON.parse(savedConfig);
+                document.getElementById('statusTopic').value = cfg.statusTopic || '';
+                document.getElementById('controlTopic').value = cfg.controlTopic || '';
+            } catch(e) {}
+        }
+        // No auto-connection. User must click login. This matches requirement.
+        // Reset any previous client
+        if(mqttClient) {
+            try { mqttClient.disconnect(); } catch(e) {}
+            mqttClient = null;
+        }
+        isConnectedFlag = false;
+        // For safety ensure no reconnects are pending
+        if(reconnectTimer) clearTimeout(reconnectTimer);
     });
     
-    // For additional reliability, expose manual refresh if needed.
-    window.refreshDashboardState = refreshDashboardState;
+    // Export global functions
+    window.handleConnectAndLogin = handleConnectAndLogin;
+    window.disconnectAndLogout = disconnectAndLogout;
+    window.sendCommand = sendCommand;
+    window.manualRefresh = manualRefresh;
 </script>
 </body>
 </html>
