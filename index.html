@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Smart Home Pro | Live State</title>
+    <title>Smart Home Pro | Voice Controlled</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         * {
@@ -101,6 +101,12 @@
         }
 
         .icon-btn:active { transform: scale(0.95); }
+        .mic-btn { background: rgba(168, 85, 247, 0.9); }
+        .mic-btn.listening { background: #ef4444; animation: pulseMic 1s infinite; }
+        @keyframes pulseMic {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            50% { box-shadow: 0 0 0 8px rgba(239, 68, 68, 0); }
+        }
         .login-header-btn { background: rgba(245, 158, 11, 0.9); }
         .logout-btn { background: rgba(239, 68, 68, 0.8); }
 
@@ -250,6 +256,25 @@
             50%{ opacity:0.6; transform:scale(1.2); }
         }
 
+        .voice-feedback {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(16px);
+            padding: 8px 20px;
+            border-radius: 40px;
+            font-size: 12px;
+            color: #facc15;
+            pointer-events: none;
+            z-index: 1000;
+            white-space: nowrap;
+            font-weight: 500;
+            border: 1px solid #facc15;
+            transition: opacity 0.2s;
+        }
+
         /* Modal Login Overlay */
         .modal-overlay {
             position: fixed;
@@ -365,17 +390,18 @@
             .card { padding: 20px 16px; }
             .title-glow h1 { font-size: 22px; }
             .icon-btn { padding: 6px 12px; font-size: 11px; }
+            .voice-feedback { font-size: 10px; white-space: nowrap; bottom: 70px; }
         }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <!-- Dashboard (Control Page) - always visible, controls disabled until login -->
     <div id="dashboardView">
         <div class="dashboard-header">
             <div class="title-glow"><h1>⚡ Smart Control</h1></div>
             <div class="action-buttons">
+                <button class="icon-btn mic-btn" id="micBtn">🎤 Voice</button>
                 <button class="icon-btn login-header-btn" id="showLoginBtn">🔐 Login</button>
             </div>
         </div>
@@ -422,7 +448,6 @@
             </div>
         </div>
         
-        <!-- Server Status -->
         <div class="server-status" id="serverStatus">
             <span class="status-badge badge-offline" id="statusLed"></span>
             <span id="statusMessage">🔴 Not logged in</span>
@@ -451,7 +476,7 @@
 </div>
 
 <script>
-    // ======================= PERSISTENT STATE & MQTT =======================
+    // ======================= MQTT & STATE =======================
     let mqttClient = null;
     let isConnected = false;
     let reconnectTimer = null;
@@ -463,6 +488,161 @@
     };
     let runtimeTopics = { statusTopic: "", controlTopic: "" };
     
+    // Voice recognition
+    let recognition = null;
+    let isListening = false;
+    const voiceFeedbackDiv = document.createElement('div');
+    voiceFeedbackDiv.className = 'voice-feedback';
+    voiceFeedbackDiv.style.opacity = '0';
+    document.body.appendChild(voiceFeedbackDiv);
+    
+    function setVoiceFeedback(text, isListeningMode = false) {
+        voiceFeedbackDiv.textContent = text;
+        voiceFeedbackDiv.style.opacity = '1';
+        if (!isListeningMode) {
+            setTimeout(() => { voiceFeedbackDiv.style.opacity = '0'; }, 2000);
+        } else {
+            // keep visible while listening
+        }
+    }
+    
+    function speak(text) {
+        if (!window.speechSynthesis) return;
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        utterance.rate = 0.9;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+    }
+    
+    function initVoiceRecognition() {
+        if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+            setVoiceFeedback("Voice not supported", false);
+            document.getElementById('micBtn').disabled = true;
+            return;
+        }
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        
+        recognition.onstart = () => {
+            isListening = true;
+            const micBtn = document.getElementById('micBtn');
+            micBtn.classList.add('listening');
+            setVoiceFeedback("🎤 Listening... speak a command", true);
+        };
+        
+        recognition.onend = () => {
+            isListening = false;
+            const micBtn = document.getElementById('micBtn');
+            micBtn.classList.remove('listening');
+            setTimeout(() => { setVoiceFeedback("", false); }, 500);
+        };
+        
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript.toLowerCase();
+            setVoiceFeedback(`🗣️ "${transcript}"`, false);
+            processVoiceCommand(transcript);
+            // auto-stop listening after one command
+            recognition.stop();
+        };
+        
+        recognition.onerror = (event) => {
+            console.error("Voice error", event.error);
+            setVoiceFeedback(`Error: ${event.error}`, false);
+            const micBtn = document.getElementById('micBtn');
+            micBtn.classList.remove('listening');
+            isListening = false;
+            setTimeout(() => { setVoiceFeedback("", false); }, 1500);
+        };
+    }
+    
+    function processVoiceCommand(transcript) {
+        if (!isConnected) {
+            setVoiceFeedback("Not connected. Please login first.", false);
+            speak("Please login first.");
+            return;
+        }
+        
+        // Command patterns
+        let commandSent = false;
+        const lower = transcript;
+        
+        // Fan ON / OFF
+        if (lower.includes("fan on") || lower.includes("turn on fan")) {
+            sendCommand("FAN_ON");
+            speak("Turning fan on");
+            commandSent = true;
+        } else if (lower.includes("fan off") || lower.includes("turn off fan")) {
+            sendCommand("FAN_OFF");
+            speak("Turning fan off");
+            commandSent = true;
+        }
+        // Fan speed: "set fan speed to 50", "fan speed 75"
+        else if (lower.includes("fan speed") || (lower.includes("speed") && lower.includes("fan"))) {
+            let match = lower.match(/(\d+)/);
+            if (match) {
+                let speed = parseInt(match[0]);
+                if (speed >= 0 && speed <= 100) {
+                    sendCommand(`SPEED_${speed}`);
+                    speak(`Fan speed set to ${speed} percent`);
+                    commandSent = true;
+                } else {
+                    speak("Speed must be between zero and one hundred");
+                }
+            } else {
+                speak("Please say a number for fan speed");
+            }
+        }
+        // Light 1 (Living Light)
+        else if (lower.includes("living light on") || lower.includes("turn on living light") || (lower.includes("light one on"))) {
+            sendCommand("L1_ON");
+            speak("Living light turned on");
+            commandSent = true;
+        } else if (lower.includes("living light off") || lower.includes("turn off living light") || (lower.includes("light one off"))) {
+            sendCommand("L1_OFF");
+            speak("Living light turned off");
+            commandSent = true;
+        }
+        // Light 2 (Bedroom Light)
+        else if (lower.includes("bedroom light on") || lower.includes("turn on bedroom light") || (lower.includes("light two on"))) {
+            sendCommand("L2_ON");
+            speak("Bedroom light turned on");
+            commandSent = true;
+        } else if (lower.includes("bedroom light off") || lower.includes("turn off bedroom light") || (lower.includes("light two off"))) {
+            sendCommand("L2_OFF");
+            speak("Bedroom light turned off");
+            commandSent = true;
+        }
+        // Help command
+        else if (lower.includes("help") || lower.includes("what can i say")) {
+            speak("You can say: fan on, fan off, set fan speed to a number, living light on or off, bedroom light on or off");
+            setVoiceFeedback("Try: fan on, living light off, set fan speed to 60", false);
+            commandSent = true;
+        }
+        
+        if (!commandSent) {
+            speak("Sorry, I didn't understand. Say help for commands.");
+        }
+    }
+    
+    function startVoiceListening() {
+        if (!recognition) {
+            initVoiceRecognition();
+        }
+        if (isListening) {
+            recognition.stop();
+            return;
+        }
+        try {
+            recognition.start();
+        } catch(e) {
+            setVoiceFeedback("Voice busy, try again", false);
+        }
+    }
+    
     // DOM elements
     const showLoginBtn = document.getElementById('showLoginBtn');
     const loginModal = document.getElementById('loginModal');
@@ -470,6 +650,7 @@
     const modalPassword = document.getElementById('modalPassword');
     const confirmLoginBtn = document.getElementById('confirmLoginBtn');
     const cancelLoginBtn = document.getElementById('cancelLoginBtn');
+    const micBtn = document.getElementById('micBtn');
     
     const fanOnBtn = document.getElementById('fanOnBtn');
     const fanOffBtn = document.getElementById('fanOffBtn');
@@ -479,7 +660,7 @@
     const light2On = document.getElementById('light2OnBtn');
     const light2Off = document.getElementById('light2OffBtn');
     
-    // Helper functions
+    // Helper functions (same as before)
     function showMessage(text, isError = false, duration = 2500) {
         const toast = document.createElement('div');
         toast.className = 'toast-message';
@@ -541,6 +722,7 @@
         btns.forEach(btn => { if(btn) btn.disabled = !enabled; });
         if (enabled && currentState.fanEnabled) fanSlider.disabled = false;
         else if (!enabled) fanSlider.disabled = true;
+        micBtn.disabled = !enabled;
         
         const loginHeaderBtn = document.getElementById('showLoginBtn');
         if (enabled) {
@@ -568,7 +750,6 @@
         }
     }
     
-    // MQTT handlers
     function onMessageArrived(message) {
         try {
             const payload = message.payloadString;
@@ -579,7 +760,6 @@
                 if (typeof data.light1State !== 'undefined') currentState.light1State = data.light1State;
                 if (typeof data.light2State !== 'undefined') currentState.light2State = data.light2State;
                 updateDashboardUI();
-                // Save device state to localStorage for persistence
                 localStorage.setItem('deviceState', JSON.stringify(currentState));
             }
         } catch(e) { console.warn(e); }
@@ -638,7 +818,6 @@
         });
     }
     
-    // Save login credentials & state to localStorage
     function saveLoginCredentials(userId, password) {
         localStorage.setItem('smartHomeUserId', userId);
         localStorage.setItem('smartHomePassword', password);
@@ -661,7 +840,6 @@
         return null;
     }
     
-    // Load saved device state from localStorage
     function loadDeviceState() {
         const savedState = localStorage.getItem('deviceState');
         if (savedState) {
@@ -673,7 +851,6 @@
         }
     }
     
-    // Login action from modal
     function performLogin() {
         const userId = modalUserId.value.trim();
         const pwd = modalPassword.value.trim();
@@ -683,10 +860,7 @@
         }
         runtimeTopics.statusTopic = userId;
         runtimeTopics.controlTopic = pwd;
-        
-        // Save credentials for future reloads
         saveLoginCredentials(userId, pwd);
-        
         loginModal.classList.remove('active');
         showMessage("Connecting to server...", false);
         if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
@@ -706,15 +880,12 @@
         runtimeTopics = { statusTopic: "", controlTopic: "" };
         enableControls(false);
         updateServerStatus(false, '🔴 Not logged in');
-        // Reset to default state
         currentState = { fanEnabled: false, fanSpeed: 50, light1State: false, light2State: false };
         updateDashboardUI();
-        // Clear stored credentials and device state
         clearSavedCredentials();
         showMessage("Logged out successfully", false);
     }
     
-    // Auto-login on page load if credentials exist
     function attemptAutoLogin() {
         const saved = loadSavedCredentials();
         if (saved) {
@@ -723,13 +894,11 @@
             showMessage("Auto-login in progress...", false);
             establishConnection();
         } else {
-            // No saved credentials, keep disabled state
             enableControls(false);
             updateServerStatus(false, '🔐 Login to start');
         }
     }
     
-    // Attach control events (no refresh button)
     function attachControlEvents() {
         fanOnBtn.onclick = () => { sendCommand('FAN_ON'); showMessage("Fan ON requested"); };
         fanOffBtn.onclick = () => { sendCommand('FAN_OFF'); showMessage("Fan OFF requested"); };
@@ -738,9 +907,10 @@
         light1Off.onclick = () => { sendCommand('L1_OFF'); showMessage("Living Light OFF"); };
         light2On.onclick = () => { sendCommand('L2_ON'); showMessage("Bedroom Light ON"); };
         light2Off.onclick = () => { sendCommand('L2_OFF'); showMessage("Bedroom Light OFF"); };
+        micBtn.onclick = startVoiceListening;
     }
     
-    // Modal interactions
+    // Modal handlers
     showLoginBtn.onclick = () => { loginModal.classList.add('active'); };
     cancelLoginBtn.onclick = () => { loginModal.classList.remove('active'); };
     confirmLoginBtn.onclick = performLogin;
@@ -749,12 +919,13 @@
     // Slider live preview
     fanSlider.oninput = (e) => { document.getElementById('speedPercent').innerText = e.target.value + '%'; };
     
-    // Initialization
+    // Initialize
     window.addEventListener('load', () => {
         attachControlEvents();
-        loadDeviceState();       // restore last known device state
+        loadDeviceState();
         updateDashboardUI();
-        attemptAutoLogin();      // try to reconnect with saved credentials
+        attemptAutoLogin();
+        initVoiceRecognition();
     });
 </script>
 </body>
