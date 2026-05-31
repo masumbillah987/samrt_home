@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Smart Home Pro | Instant Control</title>
+    <title>Smart Home Pro | Persistent Login</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         * {
@@ -25,7 +25,6 @@
             overflow-x: hidden;
         }
 
-        /* Animated background */
         body::before {
             content: '';
             position: fixed;
@@ -53,18 +52,15 @@
             z-index: 2;
         }
 
-        /* Glassmorphic cards */
         .card {
             background: rgba(30, 41, 59, 0.75);
             backdrop-filter: blur(12px);
             border-radius: 32px;
             padding: 24px 20px;
             box-shadow: 0 25px 45px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
-            transition: transform 0.3s ease;
             border: 1px solid rgba(56, 189, 248, 0.2);
         }
 
-        /* Dashboard header */
         .dashboard-header {
             display: flex;
             justify-content: space-between;
@@ -341,7 +337,6 @@
             color: white;
         }
 
-        /* Toast popup */
         .toast-message {
             position: fixed;
             bottom: 30px;
@@ -377,7 +372,7 @@
 <body>
 
 <div class="container">
-    <!-- Dashboard (Control Page) - visible immediately -->
+    <!-- Dashboard (Control Page) - always visible, but controls disabled until login -->
     <div id="dashboardView">
         <div class="dashboard-header">
             <div class="title-glow"><h1>⚡ Smart Control</h1></div>
@@ -437,7 +432,7 @@
     </div>
 </div>
 
-<!-- Login Modal (popup) -->
+<!-- Login Modal -->
 <div id="loginModal" class="modal-overlay">
     <div class="login-modal">
         <div class="header" style="font-size: 26px; margin-bottom: 10px;">🔐 Access Control</div>
@@ -458,7 +453,7 @@
 </div>
 
 <script>
-    // ======================= MQTT & STATE MANAGEMENT =======================
+    // ======================= PERSISTENT STATE & MQTT =======================
     let mqttClient = null;
     let isConnected = false;
     let reconnectTimer = null;
@@ -479,7 +474,6 @@
     const confirmLoginBtn = document.getElementById('confirmLoginBtn');
     const cancelLoginBtn = document.getElementById('cancelLoginBtn');
     
-    // Control buttons
     const fanOnBtn = document.getElementById('fanOnBtn');
     const fanOffBtn = document.getElementById('fanOffBtn');
     const fanSlider = document.getElementById('fanSpeedSlider');
@@ -488,7 +482,7 @@
     const light2On = document.getElementById('light2OnBtn');
     const light2Off = document.getElementById('light2OffBtn');
     
-    // Helper: toast
+    // Helper functions
     function showMessage(text, isError = false, duration = 2500) {
         const toast = document.createElement('div');
         toast.className = 'toast-message';
@@ -499,7 +493,6 @@
         setTimeout(() => toast.remove(), duration);
     }
     
-    // Update UI from currentState
     function updateDashboardUI() {
         const fanIcon = document.getElementById('fanIcon');
         const fanStatusSpan = document.getElementById('fanStatusText');
@@ -519,7 +512,6 @@
         fanSlider.value = currentState.fanSpeed;
         document.getElementById('speedPercent').innerText = currentState.fanSpeed + '%';
         
-        // Light 1
         const l1label = document.getElementById('light1Label');
         if (currentState.light1State) {
             l1label.innerHTML = '🏠 Living Light : ON ✨';
@@ -533,7 +525,6 @@
             light1Off.classList.add('active-off');
         }
         
-        // Light 2
         const l2label = document.getElementById('light2Label');
         if (currentState.light2State) {
             l2label.innerHTML = '🛌 Bedroom Light : ON ✨';
@@ -553,7 +544,7 @@
         btns.forEach(btn => { if(btn) btn.disabled = !enabled; });
         if (enabled && currentState.fanEnabled) fanSlider.disabled = false;
         else if (!enabled) fanSlider.disabled = true;
-        // Update login/logout button visibility
+        
         const loginHeaderBtn = document.getElementById('showLoginBtn');
         if (enabled) {
             loginHeaderBtn.textContent = "🚪 Logout";
@@ -591,6 +582,8 @@
                 if (typeof data.light1State !== 'undefined') currentState.light1State = data.light1State;
                 if (typeof data.light2State !== 'undefined') currentState.light2State = data.light2State;
                 updateDashboardUI();
+                // Save device state to localStorage for extra persistence
+                localStorage.setItem('deviceState', JSON.stringify(currentState));
             }
         } catch(e) { console.warn(e); }
     }
@@ -648,6 +641,41 @@
         });
     }
     
+    // Save login credentials & state to localStorage
+    function saveLoginCredentials(userId, password) {
+        localStorage.setItem('smartHomeUserId', userId);
+        localStorage.setItem('smartHomePassword', password);
+    }
+    
+    function clearSavedCredentials() {
+        localStorage.removeItem('smartHomeUserId');
+        localStorage.removeItem('smartHomePassword');
+        localStorage.removeItem('deviceState');
+    }
+    
+    function loadSavedCredentials() {
+        const userId = localStorage.getItem('smartHomeUserId');
+        const pwd = localStorage.getItem('smartHomePassword');
+        if (userId && pwd) {
+            modalUserId.value = userId;
+            modalPassword.value = pwd;
+            return { userId, pwd };
+        }
+        return null;
+    }
+    
+    // Load saved device state from localStorage
+    function loadDeviceState() {
+        const savedState = localStorage.getItem('deviceState');
+        if (savedState) {
+            try {
+                const parsed = JSON.parse(savedState);
+                currentState = { ...currentState, ...parsed };
+                updateDashboardUI();
+            } catch(e) {}
+        }
+    }
+    
     // Login action from modal
     function performLogin() {
         const userId = modalUserId.value.trim();
@@ -659,7 +687,9 @@
         runtimeTopics.statusTopic = userId;
         runtimeTopics.controlTopic = pwd;
         
-        // close modal
+        // Save credentials for future reloads
+        saveLoginCredentials(userId, pwd);
+        
         loginModal.classList.remove('active');
         showMessage("Connecting to server...", false);
         if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
@@ -679,19 +709,30 @@
         runtimeTopics = { statusTopic: "", controlTopic: "" };
         enableControls(false);
         updateServerStatus(false, '🔴 Not logged in');
-        // reset UI state to default
+        // Reset to default state
         currentState = { fanEnabled: false, fanSpeed: 50, light1State: false, light2State: false };
         updateDashboardUI();
+        // Clear stored credentials and device state
+        clearSavedCredentials();
         showMessage("Logged out successfully", false);
-        // change header button back to "Login"
-        const loginHeaderBtn = document.getElementById('showLoginBtn');
-        loginHeaderBtn.textContent = "🔐 Login";
-        loginHeaderBtn.classList.remove('logout-btn');
-        loginHeaderBtn.classList.add('login-header-btn');
-        loginHeaderBtn.onclick = () => { loginModal.classList.add('active'); };
     }
     
-    // Attach command events (only after login they become active)
+    // Auto-login on page load if credentials exist
+    function attemptAutoLogin() {
+        const saved = loadSavedCredentials();
+        if (saved) {
+            runtimeTopics.statusTopic = saved.userId;
+            runtimeTopics.controlTopic = saved.pwd;
+            showMessage("Auto-login in progress...", false);
+            establishConnection();
+        } else {
+            // No saved credentials, keep disabled state
+            enableControls(false);
+            updateServerStatus(false, '🔐 Login to start');
+        }
+    }
+    
+    // Attach control events
     function attachControlEvents() {
         fanOnBtn.onclick = () => { sendCommand('FAN_ON'); showMessage("Fan ON requested"); };
         fanOffBtn.onclick = () => { sendCommand('FAN_OFF'); showMessage("Fan OFF requested"); };
@@ -710,23 +751,17 @@
     showLoginBtn.onclick = () => { loginModal.classList.add('active'); };
     cancelLoginBtn.onclick = () => { loginModal.classList.remove('active'); };
     confirmLoginBtn.onclick = performLogin;
-    // close modal if clicking outside (simple)
     loginModal.onclick = (e) => { if (e.target === loginModal) loginModal.classList.remove('active'); };
     
     // Slider live preview
     fanSlider.oninput = (e) => { document.getElementById('speedPercent').innerText = e.target.value + '%'; };
     
-    // Initial load: dashboard visible, all controls disabled, login modal ready
+    // Initialization
     window.addEventListener('load', () => {
         attachControlEvents();
-        enableControls(false);
+        loadDeviceState();       // restore last known device state
         updateDashboardUI();
-        updateServerStatus(false, '🔐 Login to start');
-        // ensure modal hidden
-        loginModal.classList.remove('active');
-        // clear any stale connection
-        if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
-        mqttClient = null;
+        attemptAutoLogin();      // try to reconnect with saved credentials
     });
 </script>
 </body>
