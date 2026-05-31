@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>SmarTech BD | Professional Smart Control</title>
+    <title>SmarTech BD | Pro Smart Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         * {
@@ -15,7 +15,7 @@
         body {
             background: radial-gradient(ellipse at 20% 30%, #0b1120, #030712);
             color: #fff;
-            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Poppins', sans-serif;
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, 'Poppins', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -58,7 +58,7 @@
             box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(56, 189, 248, 0.2);
         }
 
-        /* Header */
+        /* Header with centered brand */
         .dashboard-header {
             display: flex;
             justify-content: space-between;
@@ -68,29 +68,36 @@
             gap: 0.75rem;
         }
 
-        .brand {
-            display: flex;
-            align-items: baseline;
-            gap: 0.5rem;
+        /* Empty spacer for left side to balance center */
+        .header-spacer {
+            width: 80px; /* same as action buttons container approx */
         }
 
-        .brand h1 {
-            font-size: 1.75rem;
+        .brand-center {
+            text-align: center;
+            margin-top: 0.25rem;
+        }
+
+        .brand-center h1 {
+            font-size: 1.8rem;
             font-weight: 700;
             background: linear-gradient(135deg, #ffffff, #94a3f8);
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
             letter-spacing: -0.3px;
+            margin-bottom: 0.1rem;
         }
 
-        .badge {
+        .pro-badge {
             font-size: 0.7rem;
+            font-weight: 500;
             background: rgba(56, 189, 248, 0.2);
             padding: 0.2rem 0.6rem;
             border-radius: 2rem;
             color: #7dd3fc;
-            font-weight: 500;
+            display: inline-block;
+            letter-spacing: 0.5px;
         }
 
         .action-buttons {
@@ -457,7 +464,8 @@
         @media (max-width: 480px) {
             body { padding: 12px; }
             .card { padding: 1.25rem; }
-            .brand h1 { font-size: 1.4rem; }
+            .brand-center h1 { font-size: 1.4rem; }
+            .header-spacer { width: 60px; }
             .icon-btn { padding: 0.4rem 0.8rem; font-size: 0.7rem; }
         }
     </style>
@@ -466,10 +474,12 @@
 
 <div class="container">
     <div id="dashboardView">
+        <!-- Centered header with SmarTech BD and small "pro" -->
         <div class="dashboard-header">
-            <div class="brand">
+            <div class="header-spacer"></div>
+            <div class="brand-center">
                 <h1>SmarTech BD</h1>
-                <span class="badge">PRO</span>
+                <div class="pro-badge">pro</div>
             </div>
             <div class="action-buttons">
                 <button class="icon-btn status-btn" id="currentStatusBtn">📊 Current Status</button>
@@ -511,7 +521,7 @@
                 </div>
             </div>
             <div class="light-item">
-                <div class="light-label" id="light2Label"> Light 2: OFF</div>
+                <div class="light-label" id="light2Label">🍽️ Dining Area Light : OFF</div>
                 <div class="button-group">
                     <button class="ctrl-btn" id="light2OnBtn" disabled>ON</button>
                     <button class="ctrl-btn active-off" id="light2OffBtn" disabled>OFF</button>
@@ -548,7 +558,7 @@
 </div>
 
 <script>
-    // ======================= MQTT & STATE (UNCHANGED LOGIC) =======================
+    // ======================= MQTT & STATE (IDENTICAL LOGIC, FAST AUTO-LOGIN) =======================
     let mqttClient = null;
     let isConnected = false;
     let reconnectTimer = null;
@@ -609,7 +619,7 @@
 
         const l1label = document.getElementById('light1Label');
         if (currentState.light1State) {
-            l1label.innerHTML = 'Light 1: ON ✨';
+            l1label.innerHTML = '🛋️ Living Room Light : ON ✨';
             l1label.classList.add('light-glow');
             light1On.classList.add('active-on');
             light1Off.classList.remove('active-off');
@@ -669,7 +679,7 @@
             statusSpan.innerText = msg || '🟢 Secure link active';
         } else {
             led.className = 'status-badge badge-offline';
-            statusSpan.innerText = msg || '🔴 Gateway offline';
+            statusSpan.innerText = msg || '🔐 Gateway offline';
         }
     }
 
@@ -851,12 +861,13 @@
         }, 500);
     }
 
+    // Ultra-fast auto-login: immediately load saved credentials and connect
     function attemptAutoLogin() {
         const saved = loadSavedCredentials();
         if (saved) {
             runtimeTopics.statusTopic = saved.userId;
             runtimeTopics.controlTopic = saved.pwd;
-            showMessage("Auto-login in progress...", false);
+            // No extra delay – connect instantly
             establishConnection();
         } else {
             enableControls(false);
@@ -885,7 +896,7 @@
         attachControlEvents();
         loadDeviceState();
         updateDashboardUI();
-        attemptAutoLogin();
+        attemptAutoLogin();  // instantaneous connection if credentials exist
     });
 </script>
 </body>
