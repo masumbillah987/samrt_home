@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Smart Home Pro | Persistent Login</title>
+    <title>Smart Home Pro | Live State</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         * {
@@ -101,7 +101,6 @@
         }
 
         .icon-btn:active { transform: scale(0.95); }
-        .refresh-btn { background: rgba(34, 197, 94, 0.8); }
         .login-header-btn { background: rgba(245, 158, 11, 0.9); }
         .logout-btn { background: rgba(239, 68, 68, 0.8); }
 
@@ -372,12 +371,11 @@
 <body>
 
 <div class="container">
-    <!-- Dashboard (Control Page) - always visible, but controls disabled until login -->
+    <!-- Dashboard (Control Page) - always visible, controls disabled until login -->
     <div id="dashboardView">
         <div class="dashboard-header">
             <div class="title-glow"><h1>⚡ Smart Control</h1></div>
             <div class="action-buttons">
-                <button class="icon-btn refresh-btn" id="refreshStateBtn" disabled>🔄 Refresh</button>
                 <button class="icon-btn login-header-btn" id="showLoginBtn">🔐 Login</button>
             </div>
         </div>
@@ -466,7 +464,6 @@
     let runtimeTopics = { statusTopic: "", controlTopic: "" };
     
     // DOM elements
-    const refreshBtn = document.getElementById('refreshStateBtn');
     const showLoginBtn = document.getElementById('showLoginBtn');
     const loginModal = document.getElementById('loginModal');
     const modalUserId = document.getElementById('modalUserId');
@@ -540,7 +537,7 @@
     }
     
     function enableControls(enabled) {
-        const btns = [fanOnBtn, fanOffBtn, light1On, light1Off, light2On, light2Off, refreshBtn];
+        const btns = [fanOnBtn, fanOffBtn, light1On, light1Off, light2On, light2Off];
         btns.forEach(btn => { if(btn) btn.disabled = !enabled; });
         if (enabled && currentState.fanEnabled) fanSlider.disabled = false;
         else if (!enabled) fanSlider.disabled = true;
@@ -582,7 +579,7 @@
                 if (typeof data.light1State !== 'undefined') currentState.light1State = data.light1State;
                 if (typeof data.light2State !== 'undefined') currentState.light2State = data.light2State;
                 updateDashboardUI();
-                // Save device state to localStorage for extra persistence
+                // Save device state to localStorage for persistence
                 localStorage.setItem('deviceState', JSON.stringify(currentState));
             }
         } catch(e) { console.warn(e); }
@@ -732,7 +729,7 @@
         }
     }
     
-    // Attach control events
+    // Attach control events (no refresh button)
     function attachControlEvents() {
         fanOnBtn.onclick = () => { sendCommand('FAN_ON'); showMessage("Fan ON requested"); };
         fanOffBtn.onclick = () => { sendCommand('FAN_OFF'); showMessage("Fan OFF requested"); };
@@ -741,10 +738,6 @@
         light1Off.onclick = () => { sendCommand('L1_OFF'); showMessage("Living Light OFF"); };
         light2On.onclick = () => { sendCommand('L2_ON'); showMessage("Bedroom Light ON"); };
         light2Off.onclick = () => { sendCommand('L2_OFF'); showMessage("Bedroom Light OFF"); };
-        refreshBtn.onclick = () => {
-            if (isConnected) { sendCommand("REFRESH_STATE"); sendCommand("GET_STATUS"); showMessage("🔄 Syncing state..."); }
-            else showMessage("Not connected", true);
-        };
     }
     
     // Modal interactions
