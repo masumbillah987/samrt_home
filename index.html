@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Smart Home Pro | Elegant Control</title>
+    <title>Smart Home Pro | Seamless Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         * {
@@ -25,7 +25,7 @@
             overflow-x: hidden;
         }
 
-        /* Animated background particles */
+        /* Animated background */
         body::before {
             content: '';
             position: fixed;
@@ -53,7 +53,7 @@
             z-index: 2;
         }
 
-        /* Cards with glassmorphism */
+        /* Glassmorphic cards */
         .card {
             background: rgba(30, 41, 59, 0.75);
             backdrop-filter: blur(12px);
@@ -109,7 +109,7 @@
             margin-bottom: 28px;
         }
 
-        /* Home page specific */
+        /* Home page features */
         .hero-icon {
             font-size: 72px;
             text-align: center;
@@ -378,7 +378,7 @@
             50%{ opacity:0.6; transform:scale(1.2); }
         }
 
-        /* Toast */
+        /* Toast popup */
         .toast-message {
             position: fixed;
             bottom: 30px;
@@ -403,8 +403,9 @@
             100% { opacity: 0; transform: translateX(-50%) translateY(20px); }
         }
 
-        /* Mobile adjustments */
+        /* Mobile fit */
         @media (max-width: 480px) {
+            body { padding: 12px; }
             .card { padding: 24px 18px; }
             .header { font-size: 28px; }
             .hero-icon { font-size: 56px; }
@@ -460,7 +461,7 @@
     </div>
 </div>
 
-<!-- ======================= DASHBOARD PAGE ======================= -->
+<!-- ======================= DASHBOARD (Control Page) ======================= -->
 <div id="dashboardPage" class="page hidden">
     <div class="container">
         <div class="dashboard-header">
@@ -522,7 +523,7 @@
 </div>
 
 <script>
-    // ======================= MQTT LAYER (HIDDEN FROM UI) =======================
+    // ======================= MQTT LAYER (HIDDEN) =======================
     let mqttClient = null;
     let isServerConnected = false;
     let reconnectTimer = null;
@@ -547,15 +548,15 @@
     const backToHomeBtn = document.getElementById('backToHomeBtn');
     const logoutBtn = document.getElementById('logoutBtn');
     
-    // Helper: toast
-    function showMessage(text, isError = false) {
+    // Toast helper
+    function showMessage(text, isError = false, duration = 2500) {
         const toast = document.createElement('div');
         toast.className = 'toast-message';
         toast.textContent = text;
         toast.style.borderLeftColor = isError ? '#ef4444' : '#22c55e';
         toast.style.color = isError ? '#fecaca' : '#bef264';
         document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 2200);
+        setTimeout(() => toast.remove(), duration);
     }
     
     // Update dashboard UI
@@ -616,7 +617,7 @@
         }
     }
     
-    // MQTT callbacks
+    // MQTT message handler
     function onMessageArrived(message) {
         try {
             const payload = message.payloadString;
@@ -657,7 +658,14 @@
                 mqttClient.subscribe(runtimeTopics.statusTopic, { qos: 0 });
                 sendCommand("REFRESH_STATE");
                 sendCommand("GET_STATUS");
-                showMessage("✅ Connected to server", false);
+                showMessage("✅ Device state saved & synced", false, 2000);
+                // Automatically go to control page (dashboard)
+                setTimeout(() => {
+                    loginPageDiv.classList.add('hidden');
+                    dashboardPageDiv.classList.remove('hidden');
+                    attachDashboardEvents();
+                    updateDashboardUI();
+                }, 800);
             },
             onFailure: () => {
                 isServerConnected = false;
@@ -714,14 +722,13 @@
     backToHomeBtn.onclick = () => {
         loginPageDiv.classList.add('hidden');
         homePage.classList.remove('hidden');
-        // clear any pending connection attempts
         if (reconnectTimer) clearTimeout(reconnectTimer);
         if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
         mqttClient = null;
         isServerConnected = false;
     };
     
-    // Logout: disconnect and return to HOME page
+    // Logout: return to HOME page
     logoutBtn.onclick = () => {
         if (reconnectTimer) clearTimeout(reconnectTimer);
         if (mqttClient && mqttClient.isConnected()) { try { mqttClient.disconnect(); } catch(e) {} }
@@ -730,10 +737,10 @@
         runtimeTopics = { statusTopic: "", controlTopic: "" };
         dashboardPageDiv.classList.add('hidden');
         homePage.classList.remove('hidden');
-        showMessage("Logged out", false);
+        showMessage("Logged out successfully", false);
     };
     
-    // Login action
+    // Login action: show "Device state saved" popup then auto go to control page
     function performLogin() {
         const userId = userIdInput.value.trim();
         const pwd = passwordInput.value.trim();
@@ -749,36 +756,22 @@
         
         if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
         isServerConnected = false;
-        establishServerConnection();
+        establishServerConnection();  // inside onSuccess we show toast and then switch to dashboard
         
-        let checkInterval = setInterval(() => {
-            if (isServerConnected && mqttClient && mqttClient.isConnected()) {
-                clearInterval(checkInterval);
-                clearTimeout(timeoutCheck);
-                loginBtn.textContent = "✨ Connect & Enter";
-                loginBtn.disabled = false;
-                loginPageDiv.classList.add('hidden');
-                dashboardPageDiv.classList.remove('hidden');
-                attachDashboardEvents();
-                updateDashboardUI();
-                showMessage("Welcome to Smart Dashboard", false);
-            }
-        }, 200);
-        
+        // Fallback in case connection fails
         let timeoutCheck = setTimeout(() => {
-            clearInterval(checkInterval);
             if (!isServerConnected) {
                 loginBtn.textContent = "✨ Connect & Enter";
                 loginBtn.disabled = false;
                 showMessage("Login failed: Server unreachable", true);
                 runtimeTopics = { statusTopic: "", controlTopic: "" };
             }
-        }, 7000);
+        }, 8000);
     }
     
     loginBtn.onclick = performLogin;
     
-    // Initial state: Home page visible, no MQTT connection.
+    // Initial state: Home page visible only
     window.addEventListener('load', () => {
         homePage.classList.remove('hidden');
         loginPageDiv.classList.add('hidden');
