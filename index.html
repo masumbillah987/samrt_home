@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Smart Home Pro | Elegant Dashboard</title>
+    <title>Smart Home Pro | Elegant Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         * {
@@ -53,12 +53,12 @@
             z-index: 2;
         }
 
-        /* Login & Dashboard Cards */
+        /* Cards with glassmorphism */
         .card {
             background: rgba(30, 41, 59, 0.75);
             backdrop-filter: blur(12px);
             border-radius: 32px;
-            padding: 28px 24px;
+            padding: 32px 24px;
             box-shadow: 0 25px 45px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
             transition: transform 0.3s ease, box-shadow 0.3s ease;
             border: 1px solid rgba(56, 189, 248, 0.2);
@@ -69,7 +69,7 @@
             box-shadow: 0 30px 50px rgba(0, 0, 0, 0.5);
         }
 
-        /* Animations for page entrance */
+        /* Page transitions */
         @keyframes fadeSlideUp {
             from {
                 opacity: 0;
@@ -81,13 +81,18 @@
             }
         }
 
-        .login-page, .dashboard-page {
-            animation: fadeSlideUp 0.6s cubic-bezier(0.2, 0.9, 0.4, 1.1) forwards;
+        .page {
+            animation: fadeSlideUp 0.5s cubic-bezier(0.2, 0.9, 0.4, 1.1) forwards;
         }
 
+        .hidden {
+            display: none;
+        }
+
+        /* Typography */
         .header {
             text-align: center;
-            font-size: 32px;
+            font-size: 36px;
             font-weight: 800;
             background: linear-gradient(135deg, #e0f2fe, #7dd3fc);
             -webkit-background-clip: text;
@@ -99,12 +104,67 @@
 
         .subhead {
             text-align: center;
-            font-size: 14px;
+            font-size: 15px;
             color: #94a3b8;
-            margin-bottom: 24px;
+            margin-bottom: 28px;
         }
 
-        /* Form Styles */
+        /* Home page specific */
+        .hero-icon {
+            font-size: 72px;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .feature-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin: 30px 0 25px;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(255,255,255,0.03);
+            padding: 10px 16px;
+            border-radius: 60px;
+            font-size: 14px;
+            color: #cbd5e1;
+        }
+
+        .primary-btn {
+            background: linear-gradient(95deg, #f59e0b, #d97706);
+            border: none;
+            padding: 14px 24px;
+            border-radius: 60px;
+            font-weight: 700;
+            font-size: 16px;
+            color: white;
+            cursor: pointer;
+            transition: all 0.25s;
+            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
+            width: 100%;
+            text-align: center;
+        }
+
+        .primary-btn:active {
+            transform: scale(0.97);
+        }
+
+        .outline-btn {
+            background: transparent;
+            border: 1.5px solid #f59e0b;
+            padding: 12px 20px;
+            border-radius: 60px;
+            font-weight: 600;
+            color: #fbbf24;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        /* Login form */
         .form-group {
             margin-bottom: 20px;
         }
@@ -116,7 +176,6 @@
             color: #cbd5e1;
             margin-bottom: 8px;
             margin-left: 8px;
-            letter-spacing: 0.5px;
         }
 
         input {
@@ -128,36 +187,15 @@
             font-size: 15px;
             color: white;
             transition: all 0.25s ease;
-            font-weight: 500;
         }
 
         input:focus {
             outline: none;
             border-color: #38bdf8;
             box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.3);
-            background: #0f172a;
         }
 
-        .login-btn {
-            background: linear-gradient(95deg, #f59e0b, #d97706);
-            border: none;
-            padding: 14px;
-            border-radius: 60px;
-            font-weight: 700;
-            font-size: 16px;
-            color: white;
-            cursor: pointer;
-            transition: all 0.25s;
-            margin-top: 12px;
-            box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);
-            width: 100%;
-        }
-
-        .login-btn:active {
-            transform: scale(0.97);
-        }
-
-        /* Dashboard Header */
+        /* Dashboard styles */
         .dashboard-header {
             display: flex;
             justify-content: space-between;
@@ -168,7 +206,7 @@
         }
 
         .title-glow h1 {
-            font-size: 28px;
+            font-size: 26px;
             font-weight: 800;
             background: linear-gradient(135deg, #fef08a, #fcd34d);
             -webkit-background-clip: text;
@@ -178,14 +216,14 @@
 
         .action-buttons {
             display: flex;
-            gap: 12px;
+            gap: 10px;
         }
 
         .icon-btn {
             background: rgba(51, 65, 85, 0.7);
             backdrop-filter: blur(8px);
             border: none;
-            padding: 10px 18px;
+            padding: 8px 16px;
             border-radius: 40px;
             font-weight: 600;
             cursor: pointer;
@@ -193,23 +231,12 @@
             display: flex;
             align-items: center;
             gap: 6px;
-            font-size: 13px;
-            transition: 0.2s;
+            font-size: 12px;
         }
 
-        .icon-btn:active {
-            transform: scale(0.94);
-        }
+        .refresh-btn { background: rgba(34, 197, 94, 0.8); }
+        .logout-btn { background: rgba(239, 68, 68, 0.8); }
 
-        .logout-btn {
-            background: rgba(239, 68, 68, 0.8);
-        }
-
-        .refresh-btn {
-            background: rgba(34, 197, 94, 0.8);
-        }
-
-        /* Fan & Lights Card */
         .card-title {
             font-size: 18px;
             font-weight: 600;
@@ -275,19 +302,9 @@
             transition: 0.15s;
         }
 
-        .ctrl-btn:active {
-            transform: scale(0.96);
-        }
-
-        .active-on {
-            background: #22c55e !important;
-            box-shadow: 0 0 12px rgba(34, 197, 94, 0.5);
-        }
-
-        .active-off {
-            background: #ef4444 !important;
-            box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
-        }
+        .ctrl-btn:active { transform: scale(0.96); }
+        .active-on { background: #22c55e !important; box-shadow: 0 0 12px rgba(34,197,94,0.5); }
+        .active-off { background: #ef4444 !important; box-shadow: 0 0 12px rgba(239,68,68,0.4); }
 
         .light-item {
             background: rgba(15, 23, 42, 0.6);
@@ -302,19 +319,13 @@
             font-size: 15px;
             font-weight: 600;
             margin-bottom: 10px;
-            transition: 0.2s;
         }
-
-        .light-glow {
-            color: #fbbf24;
-            text-shadow: 0 0 6px #f59e0b;
-        }
+        .light-glow { color: #fbbf24; text-shadow: 0 0 6px #f59e0b; }
 
         .slider-container {
             margin-top: 12px;
             padding: 8px 0;
         }
-
         .slider-label {
             display: flex;
             justify-content: space-between;
@@ -322,7 +333,6 @@
             color: #94a3b8;
             margin-bottom: 6px;
         }
-
         input[type="range"] {
             width: 100%;
             height: 5px;
@@ -330,7 +340,6 @@
             background: #334155;
             -webkit-appearance: none;
         }
-
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 18px;
@@ -342,7 +351,6 @@
             border: 2px solid white;
         }
 
-        /* Server status (beautiful, not mqtt related) */
         .server-status {
             text-align: center;
             font-size: 12px;
@@ -351,14 +359,11 @@
             border-radius: 60px;
             background: rgba(15, 23, 42, 0.6);
             backdrop-filter: blur(4px);
-            font-weight: 500;
-            letter-spacing: 0.3px;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 8px;
         }
-
         .status-badge {
             width: 8px;
             height: 8px;
@@ -366,26 +371,14 @@
             display: inline-block;
             animation: pulse 1.5s infinite;
         }
-
-        .badge-online {
-            background: #22c55e;
-            box-shadow: 0 0 6px #22c55e;
-        }
-
-        .badge-offline {
-            background: #ef4444;
-        }
-
+        .badge-online { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
+        .badge-offline { background: #ef4444; }
         @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.6; transform: scale(1.2); }
+            0%,100%{ opacity:1; transform:scale(1); }
+            50%{ opacity:0.6; transform:scale(1.2); }
         }
 
-        .hidden {
-            display: none;
-        }
-
-        /* Toast animation */
+        /* Toast */
         .toast-message {
             position: fixed;
             bottom: 30px;
@@ -403,50 +396,77 @@
             pointer-events: none;
             animation: toastFade 2s ease forwards;
         }
-
         @keyframes toastFade {
             0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
             15% { opacity: 1; transform: translateX(-50%) translateY(0); }
             85% { opacity: 1; transform: translateX(-50%) translateY(0); }
             100% { opacity: 0; transform: translateX(-50%) translateY(20px); }
         }
+
+        /* Mobile adjustments */
+        @media (max-width: 480px) {
+            .card { padding: 24px 18px; }
+            .header { font-size: 28px; }
+            .hero-icon { font-size: 56px; }
+            .title-glow h1 { font-size: 22px; }
+            .icon-btn { padding: 6px 12px; font-size: 11px; }
+        }
     </style>
 </head>
 <body>
 
-<!-- HOME PAGE (login screen) - opens first, beautiful interface -->
-<div class="login-page" id="loginPage">
+<!-- ======================= HOME PAGE (Landing) ======================= -->
+<div id="homePage" class="page">
     <div class="container">
         <div class="card" style="text-align: center;">
-            <div class="header">🏠 Smart Home Pro</div>
-            <div class="subhead">Experience seamless control</div>
+            <div class="hero-icon">🏠✨</div>
+            <div class="header">Smart Home Pro</div>
+            <div class="subhead">Intelligent living, effortless control</div>
             
-            <div class="form-group">
-                <label>👤 User ID</label>
-                <input type="text" id="userId" placeholder="Enter your User ID" autocomplete="off">
-            </div>
-            <div class="form-group">
-                <label>🔒 Password</label>
-                <input type="text" id="password" placeholder="Enter Password" autocomplete="off">
+            <div class="feature-list">
+                <div class="feature-item">🌀 Smart Fan Speed Control</div>
+                <div class="feature-item">💡 Dual Light Zones</div>
+                <div class="feature-item">📱 Real-time Dashboard</div>
+                <div class="feature-item">🔒 Secure & Private</div>
             </div>
             
-            <button class="login-btn" id="loginBtn">✨ Login to Dashboard</button>
+            <button class="primary-btn" id="goToLoginBtn">→ Get Started</button>
             <div style="margin-top: 20px; font-size: 12px; color: #64748b;">
-                Secure access · instant connection
+                Tap to access your smart home
             </div>
         </div>
     </div>
 </div>
 
-<!-- DASHBOARD PAGE (appears after login) -->
-<div class="dashboard-page hidden" id="dashboardPage">
+<!-- ======================= LOGIN PAGE ======================= -->
+<div id="loginPage" class="page hidden">
+    <div class="container">
+        <div class="card">
+            <div class="header">🔐 Access Dashboard</div>
+            <div class="subhead">Enter your credentials</div>
+            
+            <div class="form-group">
+                <label>👤 User ID</label>
+                <input type="text" id="userId" placeholder="Your User ID" autocomplete="off">
+            </div>
+            <div class="form-group">
+                <label>🔒 Password</label>
+                <input type="text" id="password" placeholder="Password" autocomplete="off">
+            </div>
+            
+            <button class="primary-btn" id="loginBtn">✨ Connect & Enter</button>
+            <button class="outline-btn" id="backToHomeBtn" style="margin-top: 12px; width: 100%;">← Back to Home</button>
+        </div>
+    </div>
+</div>
+
+<!-- ======================= DASHBOARD PAGE ======================= -->
+<div id="dashboardPage" class="page hidden">
     <div class="container">
         <div class="dashboard-header">
-            <div class="title-glow">
-                <h1>⚡ Smart Dashboard</h1>
-            </div>
+            <div class="title-glow"><h1>⚡ Smart Dashboard</h1></div>
             <div class="action-buttons">
-                <button class="icon-btn refresh-btn" id="refreshStateBtn">🔄 Refresh State</button>
+                <button class="icon-btn refresh-btn" id="refreshStateBtn">🔄 Refresh</button>
                 <button class="icon-btn logout-btn" id="logoutBtn">🚪 Exit</button>
             </div>
         </div>
@@ -469,7 +489,7 @@
                 <button class="ctrl-btn active-off" id="fanOffBtn">TURN OFF</button>
             </div>
             <div class="slider-container">
-                <div class="slider-label"><span>🌀 Rotation Speed</span><span id="speedPercent">50%</span></div>
+                <div class="slider-label"><span>🌀 Speed</span><span id="speedPercent">50%</span></div>
                 <input type="range" id="fanSpeedSlider" min="0" max="100" value="50" disabled>
             </div>
         </div>
@@ -477,7 +497,6 @@
         <!-- Lights Card -->
         <div class="card">
             <div class="card-title">💡 Illumination Hub</div>
-            
             <div class="light-item">
                 <div class="light-label" id="light1Label">🏠 Living Light : OFF</div>
                 <div class="button-group">
@@ -485,7 +504,6 @@
                     <button class="ctrl-btn active-off" id="light1OffBtn">OFF</button>
                 </div>
             </div>
-            
             <div class="light-item">
                 <div class="light-label" id="light2Label">🛌 Bedroom Light : OFF</div>
                 <div class="button-group">
@@ -495,10 +513,10 @@
             </div>
         </div>
         
-        <!-- Server connection status (no MQTT text) -->
+        <!-- Server Status (no MQTT text) -->
         <div class="server-status" id="serverStatus">
             <span class="status-badge" id="statusLed"></span>
-            <span id="statusMessage">🟢 Connected to server</span>
+            <span id="statusMessage">🔴 Disconnected</span>
         </div>
     </div>
 </div>
@@ -509,7 +527,6 @@
     let isServerConnected = false;
     let reconnectTimer = null;
     
-    // Internal state
     let currentState = {
         fanEnabled: false,
         fanSpeed: 50,
@@ -517,20 +534,20 @@
         light2State: false
     };
     
-    // Topics will be derived from user credentials (UserId -> statusTopic, Password -> controlTopic)
-    let runtimeTopics = {
-        statusTopic: "",
-        controlTopic: ""
-    };
+    let runtimeTopics = { statusTopic: "", controlTopic: "" };
     
     // DOM elements
-    const loginPage = document.getElementById('loginPage');
-    const dashboardPage = document.getElementById('dashboardPage');
+    const homePage = document.getElementById('homePage');
+    const loginPageDiv = document.getElementById('loginPage');
+    const dashboardPageDiv = document.getElementById('dashboardPage');
     const userIdInput = document.getElementById('userId');
     const passwordInput = document.getElementById('password');
     const loginBtn = document.getElementById('loginBtn');
+    const goToLoginBtn = document.getElementById('goToLoginBtn');
+    const backToHomeBtn = document.getElementById('backToHomeBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
     
-    // Toast helper
+    // Helper: toast
     function showMessage(text, isError = false) {
         const toast = document.createElement('div');
         toast.className = 'toast-message';
@@ -538,12 +555,11 @@
         toast.style.borderLeftColor = isError ? '#ef4444' : '#22c55e';
         toast.style.color = isError ? '#fecaca' : '#bef264';
         document.body.appendChild(toast);
-        setTimeout(() => toast.remove(), 2000);
+        setTimeout(() => toast.remove(), 2200);
     }
     
-    // Update UI based on currentState
+    // Update dashboard UI
     function updateDashboardUI() {
-        // Fan section
         const fanIcon = document.getElementById('fanIcon');
         const fanStatusSpan = document.getElementById('fanStatusText');
         const fanOnBtn = document.getElementById('fanOnBtn');
@@ -564,45 +580,44 @@
             fanOffBtn.classList.add('active-off');
             fanSlider.disabled = true;
         }
-        
         fanSlider.value = currentState.fanSpeed;
         speedSpan.innerText = currentState.fanSpeed + '%';
         
         // Light 1
-        const light1Label = document.getElementById('light1Label');
+        const l1label = document.getElementById('light1Label');
         const l1on = document.getElementById('light1OnBtn');
         const l1off = document.getElementById('light1OffBtn');
         if (currentState.light1State) {
-            light1Label.innerHTML = '🏠 Living Light : ON ✨';
-            light1Label.classList.add('light-glow');
+            l1label.innerHTML = '🏠 Living Light : ON ✨';
+            l1label.classList.add('light-glow');
             l1on.classList.add('active-on');
             l1off.classList.remove('active-off');
         } else {
-            light1Label.innerHTML = '🏠 Living Light : OFF';
-            light1Label.classList.remove('light-glow');
+            l1label.innerHTML = '🏠 Living Light : OFF';
+            l1label.classList.remove('light-glow');
             l1on.classList.remove('active-on');
             l1off.classList.add('active-off');
         }
         
         // Light 2
-        const light2Label = document.getElementById('light2Label');
+        const l2label = document.getElementById('light2Label');
         const l2on = document.getElementById('light2OnBtn');
         const l2off = document.getElementById('light2OffBtn');
         if (currentState.light2State) {
-            light2Label.innerHTML = '🛌 Bedroom Light : ON ✨';
-            light2Label.classList.add('light-glow');
+            l2label.innerHTML = '🛌 Bedroom Light : ON ✨';
+            l2label.classList.add('light-glow');
             l2on.classList.add('active-on');
             l2off.classList.remove('active-off');
         } else {
-            light2Label.innerHTML = '🛌 Bedroom Light : OFF';
-            light2Label.classList.remove('light-glow');
+            l2label.innerHTML = '🛌 Bedroom Light : OFF';
+            l2label.classList.remove('light-glow');
             l2on.classList.remove('active-on');
             l2off.classList.add('active-off');
         }
     }
     
-    // MQTT message handler (JSON state)
-    function onMessageReceived(message) {
+    // MQTT callbacks
+    function onMessageArrived(message) {
         try {
             const payload = message.payloadString;
             if (payload.startsWith('{')) {
@@ -613,29 +628,24 @@
                 if (typeof data.light2State !== 'undefined') currentState.light2State = data.light2State;
                 updateDashboardUI();
             }
-        } catch (e) { console.warn(e); }
+        } catch(e) { console.warn(e); }
     }
     
-    function onConnectionLost(resp) {
-        console.log("Server connection lost");
+    function onConnectionLost() {
         isServerConnected = false;
         updateServerStatusUI(false);
         if (reconnectTimer) clearTimeout(reconnectTimer);
         reconnectTimer = setTimeout(() => {
-            if (runtimeTopics.statusTopic && runtimeTopics.controlTopic) {
-                establishServerConnection();
-            }
+            if (runtimeTopics.statusTopic && runtimeTopics.controlTopic) establishServerConnection();
         }, 3000);
     }
     
     function establishServerConnection() {
         if (!runtimeTopics.statusTopic || !runtimeTopics.controlTopic) return;
-        if (mqttClient) {
-            try { mqttClient.disconnect(); } catch(e) {}
-        }
-        const clientId = "dashboard_" + Math.random().toString(36).substring(2, 10);
+        if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
+        const clientId = "dash_" + Math.random().toString(36).substring(2, 10);
         mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8884, clientId);
-        mqttClient.onMessageArrived = onMessageReceived;
+        mqttClient.onMessageArrived = onMessageArrived;
         mqttClient.onConnectionLost = onConnectionLost;
         
         mqttClient.connect({
@@ -645,12 +655,11 @@
                 isServerConnected = true;
                 updateServerStatusUI(true);
                 mqttClient.subscribe(runtimeTopics.statusTopic, { qos: 0 });
-                // Request fresh state after connect
                 sendCommand("REFRESH_STATE");
                 sendCommand("GET_STATUS");
-                showMessage("✅ Server connected & ready", false);
+                showMessage("✅ Connected to server", false);
             },
-            onFailure: (err) => {
+            onFailure: () => {
                 isServerConnected = false;
                 updateServerStatusUI(false);
                 reconnectTimer = setTimeout(() => establishServerConnection(), 4000);
@@ -660,7 +669,7 @@
     
     function sendCommand(cmd) {
         if (!mqttClient || !isServerConnected) {
-            showMessage("⚠️ Server not ready, please wait", true);
+            showMessage("⚠️ Server not ready", true);
             return false;
         }
         try {
@@ -672,143 +681,118 @@
     }
     
     function updateServerStatusUI(online) {
-        const statusDiv = document.getElementById('serverStatus');
         const led = document.getElementById('statusLed');
         const msgSpan = document.getElementById('statusMessage');
         if (online) {
             led.className = 'status-badge badge-online';
             msgSpan.innerText = '🟢 Server · Live Connection';
-            statusDiv.style.borderLeft = '2px solid #22c55e';
         } else {
             led.className = 'status-badge badge-offline';
             msgSpan.innerText = '🔴 Reconnecting to server...';
-            statusDiv.style.borderLeft = '2px solid #ef4444';
         }
     }
     
-    // Button actions for dashboard (send commands)
     function attachDashboardEvents() {
-        document.getElementById('fanOnBtn').onclick = () => { sendCommand('FAN_ON'); showMessage("Fan ON requested", false); };
-        document.getElementById('fanOffBtn').onclick = () => { sendCommand('FAN_OFF'); showMessage("Fan OFF requested", false); };
-        document.getElementById('fanSpeedSlider').onchange = (e) => {
-            let speed = e.target.value;
-            sendCommand('SPEED_' + speed);
-            showMessage(`Speed set to ${speed}%`, false);
-        };
-        document.getElementById('light1OnBtn').onclick = () => { sendCommand('L1_ON'); showMessage("Living Light ON", false); };
-        document.getElementById('light1OffBtn').onclick = () => { sendCommand('L1_OFF'); showMessage("Living Light OFF", false); };
-        document.getElementById('light2OnBtn').onclick = () => { sendCommand('L2_ON'); showMessage("Bedroom Light ON", false); };
-        document.getElementById('light2OffBtn').onclick = () => { sendCommand('L2_OFF'); showMessage("Bedroom Light OFF", false); };
-        
-        // Refresh button: manually request latest state
+        document.getElementById('fanOnBtn').onclick = () => { sendCommand('FAN_ON'); showMessage("Fan ON requested"); };
+        document.getElementById('fanOffBtn').onclick = () => { sendCommand('FAN_OFF'); showMessage("Fan OFF requested"); };
+        document.getElementById('fanSpeedSlider').onchange = (e) => { sendCommand('SPEED_' + e.target.value); showMessage(`Speed ${e.target.value}%`); };
+        document.getElementById('light1OnBtn').onclick = () => { sendCommand('L1_ON'); showMessage("Living Light ON"); };
+        document.getElementById('light1OffBtn').onclick = () => { sendCommand('L1_OFF'); showMessage("Living Light OFF"); };
+        document.getElementById('light2OnBtn').onclick = () => { sendCommand('L2_ON'); showMessage("Bedroom Light ON"); };
+        document.getElementById('light2OffBtn').onclick = () => { sendCommand('L2_OFF'); showMessage("Bedroom Light OFF"); };
         document.getElementById('refreshStateBtn').onclick = () => {
-            if (isServerConnected) {
-                sendCommand("REFRESH_STATE");
-                sendCommand("GET_STATUS");
-                showMessage("🔄 Syncing latest device state", false);
-            } else {
-                showMessage("Server offline, cannot refresh", true);
-            }
+            if (isServerConnected) { sendCommand("REFRESH_STATE"); sendCommand("GET_STATUS"); showMessage("🔄 Syncing state..."); }
+            else showMessage("Server offline", true);
         };
     }
     
-    // Logout: disconnect and go back to login screen
-    function performLogout() {
+    // Navigation: Home -> Login
+    goToLoginBtn.onclick = () => {
+        homePage.classList.add('hidden');
+        loginPageDiv.classList.remove('hidden');
+    };
+    backToHomeBtn.onclick = () => {
+        loginPageDiv.classList.add('hidden');
+        homePage.classList.remove('hidden');
+        // clear any pending connection attempts
         if (reconnectTimer) clearTimeout(reconnectTimer);
-        if (mqttClient && mqttClient.isConnected()) {
-            try { mqttClient.disconnect(); } catch(e) {}
-        }
+        if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
+        mqttClient = null;
+        isServerConnected = false;
+    };
+    
+    // Logout: disconnect and return to HOME page
+    logoutBtn.onclick = () => {
+        if (reconnectTimer) clearTimeout(reconnectTimer);
+        if (mqttClient && mqttClient.isConnected()) { try { mqttClient.disconnect(); } catch(e) {} }
         mqttClient = null;
         isServerConnected = false;
         runtimeTopics = { statusTopic: "", controlTopic: "" };
-        dashboardPage.classList.add('hidden');
-        loginPage.classList.remove('hidden');
-        // reset input fields
-        userIdInput.value = '';
-        passwordInput.value = '';
-        showMessage("Logged out successfully", false);
-    }
+        dashboardPageDiv.classList.add('hidden');
+        homePage.classList.remove('hidden');
+        showMessage("Logged out", false);
+    };
     
-    // Login function: use UserId as status topic, Password as control topic
+    // Login action
     function performLogin() {
         const userId = userIdInput.value.trim();
         const pwd = passwordInput.value.trim();
-        
         if (!userId || !pwd) {
-            showMessage("Please enter both User ID and Password", true);
+            showMessage("Please enter User ID and Password", true);
             return;
         }
-        
-        // Map: UserId -> statusTopic, Password -> controlTopic (hidden mqtt)
         runtimeTopics.statusTopic = userId;
         runtimeTopics.controlTopic = pwd;
         
-        // Show loading effect
         loginBtn.textContent = "🔄 Connecting...";
         loginBtn.disabled = true;
         
-        // attempt MQTT connection with these topics
-        if (mqttClient) {
-            try { mqttClient.disconnect(); } catch(e) {}
-        }
+        if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
         isServerConnected = false;
-        
         establishServerConnection();
         
-        // wait for connection result (check after 2 seconds)
         let checkInterval = setInterval(() => {
             if (isServerConnected && mqttClient && mqttClient.isConnected()) {
                 clearInterval(checkInterval);
                 clearTimeout(timeoutCheck);
-                loginBtn.textContent = "✨ Login to Dashboard";
+                loginBtn.textContent = "✨ Connect & Enter";
                 loginBtn.disabled = false;
-                // Switch to dashboard
-                loginPage.classList.add('hidden');
-                dashboardPage.classList.remove('hidden');
-                // attach events to dashboard controls
+                loginPageDiv.classList.add('hidden');
+                dashboardPageDiv.classList.remove('hidden');
                 attachDashboardEvents();
                 updateDashboardUI();
                 showMessage("Welcome to Smart Dashboard", false);
             }
-        }, 300);
+        }, 200);
         
         let timeoutCheck = setTimeout(() => {
             clearInterval(checkInterval);
             if (!isServerConnected) {
-                loginBtn.textContent = "✨ Login to Dashboard";
+                loginBtn.textContent = "✨ Connect & Enter";
                 loginBtn.disabled = false;
-                showMessage("Login failed: Server unreachable. Check credentials.", true);
+                showMessage("Login failed: Server unreachable", true);
                 runtimeTopics = { statusTopic: "", controlTopic: "" };
             }
         }, 7000);
     }
     
-    // Event listeners
     loginBtn.onclick = performLogin;
-    document.getElementById('logoutBtn')?.addEventListener('click', performLogout);
     
-    // Initial page state: home page first, not login page? Actually "home page" is the login screen but beautiful. 
-    // It must open directly without seeing dashboard. Dashboard hidden initially.
+    // Initial state: Home page visible, no MQTT connection.
     window.addEventListener('load', () => {
-        // Ensure dashboard hidden, login visible, no auto-connect.
-        dashboardPage.classList.add('hidden');
-        loginPage.classList.remove('hidden');
-        if (mqttClient) {
-            try { mqttClient.disconnect(); } catch(e) {}
-            mqttClient = null;
-        }
+        homePage.classList.remove('hidden');
+        loginPageDiv.classList.add('hidden');
+        dashboardPageDiv.classList.add('hidden');
+        if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
+        mqttClient = null;
         isServerConnected = false;
-        // Reset any internal timer
         if (reconnectTimer) clearTimeout(reconnectTimer);
-        // No server connection until login.
     });
     
-    // Additional: slider live update without mqtt spam but good ux
+    // Slider live update
     const speedSlider = document.getElementById('fanSpeedSlider');
-    if(speedSlider) {
-        speedSlider.oninput = (e) => {
-            document.getElementById('speedPercent').innerText = e.target.value + '%';
-        };
+    if (speedSlider) {
+        speedSlider.oninput = (e) => { document.getElementById('speedPercent').innerText = e.target.value + '%'; };
     }
 </script>
 </body>
