@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>SmarTech BD | Pro Smart Control</title>
+    <title>SmarTech BD | Pro Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         * {
@@ -25,7 +25,6 @@
             overflow-x: hidden;
         }
 
-        /* Animated grain / light effect */
         body::before {
             content: '';
             position: fixed;
@@ -58,24 +57,22 @@
             box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(56, 189, 248, 0.2);
         }
 
-        /* Header with centered brand */
+        /* Centered header using flex */
         .dashboard-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-            gap: 0.75rem;
         }
 
-        /* Empty spacer for left side to balance center */
-        .header-spacer {
-            width: 80px; /* same as action buttons container approx */
+        .header-left {
+            flex: 1;
+            visibility: hidden; /* invisible spacer for balance */
         }
 
         .brand-center {
             text-align: center;
-            margin-top: 0.25rem;
+            flex: 0 0 auto;
         }
 
         .brand-center h1 {
@@ -101,7 +98,9 @@
         }
 
         .action-buttons {
+            flex: 1;
             display: flex;
+            justify-content: flex-end;
             gap: 0.75rem;
         }
 
@@ -221,7 +220,7 @@
             box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
         }
 
-        /* Light items - professional naming */
+        /* Light items - simple Light 1, Light 2 */
         .light-item {
             background: rgba(15, 23, 42, 0.5);
             border-radius: 1.5rem;
@@ -465,7 +464,6 @@
             body { padding: 12px; }
             .card { padding: 1.25rem; }
             .brand-center h1 { font-size: 1.4rem; }
-            .header-spacer { width: 60px; }
             .icon-btn { padding: 0.4rem 0.8rem; font-size: 0.7rem; }
         }
     </style>
@@ -476,7 +474,7 @@
     <div id="dashboardView">
         <!-- Centered header with SmarTech BD and small "pro" -->
         <div class="dashboard-header">
-            <div class="header-spacer"></div>
+            <div class="header-left"></div>
             <div class="brand-center">
                 <h1>SmarTech BD</h1>
                 <div class="pro-badge">pro</div>
@@ -510,18 +508,18 @@
             </div>
         </div>
 
-        <!-- Lights Card with professional naming -->
+        <!-- Lights Card with simple Light 1, Light 2 -->
         <div class="card">
             <div class="card-title">💡 Illumination Hub</div>
             <div class="light-item">
-                <div class="light-label" id="light1Label">🛋️ Living Room Light : OFF</div>
+                <div class="light-label" id="light1Label">💡 Light 1 : OFF</div>
                 <div class="button-group">
                     <button class="ctrl-btn" id="light1OnBtn" disabled>ON</button>
                     <button class="ctrl-btn active-off" id="light1OffBtn" disabled>OFF</button>
                 </div>
             </div>
             <div class="light-item">
-                <div class="light-label" id="light2Label">🍽️ Dining Area Light : OFF</div>
+                <div class="light-label" id="light2Label">💡 Light 2 : OFF</div>
                 <div class="button-group">
                     <button class="ctrl-btn" id="light2OnBtn" disabled>ON</button>
                     <button class="ctrl-btn active-off" id="light2OffBtn" disabled>OFF</button>
@@ -541,7 +539,7 @@
 <div id="loginModal" class="modal-overlay">
     <div class="login-modal">
         <div class="header">🔐 Secure Access</div>
-        <div class="subhead" style="text-align: center; font-size: 0.8rem; margin-bottom: 1.5rem; color: #94a3b8;">Enter your secure credentials</div>
+        <div class="subhead" style="text-align: center; font-size: 0.8rem; margin-bottom: 1.5rem; color: #94a3b8;">Enter your credentials</div>
         <div class="form-group">
             <label>👤 User ID</label>
             <input type="text" id="modalUserId" placeholder="Your User ID" autocomplete="off">
@@ -558,7 +556,7 @@
 </div>
 
 <script>
-    // ======================= MQTT & STATE (IDENTICAL LOGIC, FAST AUTO-LOGIN) =======================
+    // ======================= MQTT & STATE (FAST AUTO-LOGIN, SAME LOGIC) =======================
     let mqttClient = null;
     let isConnected = false;
     let reconnectTimer = null;
@@ -619,12 +617,12 @@
 
         const l1label = document.getElementById('light1Label');
         if (currentState.light1State) {
-            l1label.innerHTML = '🛋️ Living Room Light : ON ✨';
+            l1label.innerHTML = '💡 Light 1 : ON ✨';
             l1label.classList.add('light-glow');
             light1On.classList.add('active-on');
             light1Off.classList.remove('active-off');
         } else {
-            l1label.innerHTML = '🛋️ Living Room Light : OFF';
+            l1label.innerHTML = '💡 Light 1 : OFF';
             l1label.classList.remove('light-glow');
             light1On.classList.remove('active-on');
             light1Off.classList.add('active-off');
@@ -632,12 +630,12 @@
 
         const l2label = document.getElementById('light2Label');
         if (currentState.light2State) {
-            l2label.innerHTML = '🍽️ Dining Area Light : ON ✨';
+            l2label.innerHTML = '💡 Light 2 : ON ✨';
             l2label.classList.add('light-glow');
             light2On.classList.add('active-on');
             light2Off.classList.remove('active-off');
         } else {
-            l2label.innerHTML = '🍽️ Dining Area Light : OFF';
+            l2label.innerHTML = '💡 Light 2 : OFF';
             l2label.classList.remove('light-glow');
             light2On.classList.remove('active-on');
             light2Off.classList.add('active-off');
@@ -645,7 +643,7 @@
 
         if (pendingStatusRequest) {
             pendingStatusRequest = false;
-            showMessage(`✅ Status refreshed: Fan ${currentState.fanEnabled ? 'ON' : 'OFF'} (${currentState.fanSpeed}%) | Living: ${currentState.light1State ? 'ON' : 'OFF'} | Dining: ${currentState.light2State ? 'ON' : 'OFF'}`, false, 4000);
+            showMessage(`✅ Status refreshed: Fan ${currentState.fanEnabled ? 'ON' : 'OFF'} (${currentState.fanSpeed}%) | Light 1: ${currentState.light1State ? 'ON' : 'OFF'} | Light 2: ${currentState.light2State ? 'ON' : 'OFF'}`, false, 4000);
             const btn = document.getElementById('currentStatusBtn');
             if (btn) btn.innerHTML = '📊 Current Status';
         }
@@ -861,13 +859,12 @@
         }, 500);
     }
 
-    // Ultra-fast auto-login: immediately load saved credentials and connect
+    // Ultra-fast auto-login
     function attemptAutoLogin() {
         const saved = loadSavedCredentials();
         if (saved) {
             runtimeTopics.statusTopic = saved.userId;
             runtimeTopics.controlTopic = saved.pwd;
-            // No extra delay – connect instantly
             establishConnection();
         } else {
             enableControls(false);
@@ -879,10 +876,10 @@
         fanOnBtn.onclick = () => { sendCommand('FAN_ON'); showMessage("Fan ON requested"); };
         fanOffBtn.onclick = () => { sendCommand('FAN_OFF'); showMessage("Fan OFF requested"); };
         fanSlider.onchange = (e) => { sendCommand('SPEED_' + e.target.value); showMessage(`Speed ${e.target.value}%`); };
-        light1On.onclick = () => { sendCommand('L1_ON'); showMessage("Living Room Light ON"); };
-        light1Off.onclick = () => { sendCommand('L1_OFF'); showMessage("Living Room Light OFF"); };
-        light2On.onclick = () => { sendCommand('L2_ON'); showMessage("Dining Area Light ON"); };
-        light2Off.onclick = () => { sendCommand('L2_OFF'); showMessage("Dining Area Light OFF"); };
+        light1On.onclick = () => { sendCommand('L1_ON'); showMessage("Light 1 ON"); };
+        light1Off.onclick = () => { sendCommand('L1_OFF'); showMessage("Light 1 OFF"); };
+        light2On.onclick = () => { sendCommand('L2_ON'); showMessage("Light 2 ON"); };
+        light2Off.onclick = () => { sendCommand('L2_OFF'); showMessage("Light 2 OFF"); };
         currentStatusBtn.onclick = requestCurrentStatus;
     }
 
@@ -896,7 +893,7 @@
         attachControlEvents();
         loadDeviceState();
         updateDashboardUI();
-        attemptAutoLogin();  // instantaneous connection if credentials exist
+        attemptAutoLogin();
     });
 </script>
 </body>
