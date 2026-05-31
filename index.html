@@ -511,7 +511,7 @@
                 </div>
             </div>
             <div class="light-item">
-                <div class="light-label" id="light2Label">🍽️ Dining Area Light : OFF</div>
+                <div class="light-label" id="light2Label"> Light 2: OFF</div>
                 <div class="button-group">
                     <button class="ctrl-btn" id="light2OnBtn" disabled>ON</button>
                     <button class="ctrl-btn active-off" id="light2OffBtn" disabled>OFF</button>
@@ -609,7 +609,7 @@
 
         const l1label = document.getElementById('light1Label');
         if (currentState.light1State) {
-            l1label.innerHTML = '🛋️ Living Room Light : ON ✨';
+            l1label.innerHTML = 'Light 1: ON ✨';
             l1label.classList.add('light-glow');
             light1On.classList.add('active-on');
             light1Off.classList.remove('active-off');
