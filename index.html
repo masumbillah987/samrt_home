@@ -3,178 +3,256 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Smart Home Pro | Active Status</title>
+    <title>SmarTech BD | Professional Smart Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
         body {
-            background: linear-gradient(135deg, #0a0f1e 0%, #0f172a 100%);
+            background: radial-gradient(ellipse at 20% 30%, #0b1120, #030712);
             color: #fff;
-            font-family: 'Segoe UI', 'Poppins', sans-serif;
+            font-family: 'Inter', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, 'Poppins', sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             min-height: 100vh;
-            padding: 16px;
+            padding: 20px;
             position: relative;
             overflow-x: hidden;
         }
+
+        /* Animated grain / light effect */
         body::before {
             content: '';
             position: fixed;
-            width: 200%;
-            height: 200%;
-            top: -50%;
-            left: -50%;
-            background: radial-gradient(circle at 30% 50%, rgba(56, 189, 248, 0.08) 0%, transparent 50%),
-                        radial-gradient(circle at 70% 80%, rgba(34, 197, 94, 0.05) 0%, transparent 60%);
-            animation: floatBg 20s ease-in-out infinite;
+            inset: 0;
+            background: radial-gradient(circle at 60% 40%, rgba(56, 189, 248, 0.08) 0%, transparent 60%);
             pointer-events: none;
             z-index: 0;
         }
-        @keyframes floatBg {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); }
-            50% { transform: translate(2%, 1%) rotate(2deg); }
-        }
+
         .container {
             width: 100%;
-            max-width: 500px;
+            max-width: 520px;
             margin: 0 auto;
             position: relative;
             z-index: 2;
         }
+
+        /* Glassmorphic cards */
         .card {
-            background: rgba(30, 41, 59, 0.75);
-            backdrop-filter: blur(12px);
-            border-radius: 32px;
-            padding: 24px 20px;
-            box-shadow: 0 25px 45px rgba(0, 0, 0, 0.4);
-            border: 1px solid rgba(56, 189, 248, 0.2);
+            background: rgba(18, 25, 45, 0.65);
+            backdrop-filter: blur(16px);
+            border-radius: 2rem;
+            padding: 1.5rem;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.05);
+            transition: transform 0.25s ease, box-shadow 0.3s ease;
         }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 24px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(56, 189, 248, 0.2);
+        }
+
+        /* Header */
         .dashboard-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
+            margin-bottom: 1.5rem;
             flex-wrap: wrap;
-            gap: 12px;
+            gap: 0.75rem;
         }
-        .title-glow h1 {
-            font-size: 26px;
-            font-weight: 800;
-            background: linear-gradient(135deg, #fef08a, #fcd34d);
+
+        .brand {
+            display: flex;
+            align-items: baseline;
+            gap: 0.5rem;
+        }
+
+        .brand h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #ffffff, #94a3f8);
             -webkit-background-clip: text;
             background-clip: text;
             color: transparent;
+            letter-spacing: -0.3px;
         }
+
+        .badge {
+            font-size: 0.7rem;
+            background: rgba(56, 189, 248, 0.2);
+            padding: 0.2rem 0.6rem;
+            border-radius: 2rem;
+            color: #7dd3fc;
+            font-weight: 500;
+        }
+
         .action-buttons {
             display: flex;
-            gap: 10px;
+            gap: 0.75rem;
         }
+
         .icon-btn {
-            background: rgba(51, 65, 85, 0.7);
+            background: rgba(30, 41, 59, 0.7);
             backdrop-filter: blur(8px);
             border: none;
-            padding: 8px 16px;
-            border-radius: 40px;
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
             font-weight: 600;
             cursor: pointer;
             color: white;
             display: flex;
             align-items: center;
-            gap: 6px;
-            font-size: 12px;
-            transition: 0.2s;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            transition: all 0.2s;
+            font-family: inherit;
         }
-        .icon-btn:active { transform: scale(0.95); }
-        .status-btn { background: rgba(34, 197, 94, 0.8); }
-        .login-header-btn { background: rgba(245, 158, 11, 0.9); }
-        .logout-btn { background: rgba(239, 68, 68, 0.8); }
+
+        .icon-btn:active {
+            transform: scale(0.96);
+        }
+
+        .status-btn {
+            background: rgba(34, 197, 94, 0.85);
+            box-shadow: 0 0 8px rgba(34, 197, 94, 0.3);
+        }
+
+        .login-header-btn {
+            background: rgba(245, 158, 11, 0.9);
+        }
+
+        .logout-btn {
+            background: rgba(239, 68, 68, 0.9);
+        }
+
+        /* Card titles */
         .card-title {
-            font-size: 18px;
+            font-size: 1.1rem;
             font-weight: 600;
-            color: #7dd3fc;
-            margin-bottom: 18px;
+            color: #a5f3fc;
+            margin-bottom: 1rem;
             display: flex;
             align-items: center;
-            gap: 8px;
+            gap: 0.5rem;
             border-left: 3px solid #38bdf8;
-            padding-left: 12px;
+            padding-left: 0.75rem;
         }
+
+        /* Fan area */
         .fan-container {
             display: flex;
             justify-content: center;
-            margin: 15px 0;
+            margin: 1rem 0;
         }
+
         .fan-icon {
             width: 90px;
             height: 90px;
-            fill: #475569;
+            fill: #64748b;
             transition: all 0.2s;
         }
+
         .spinning {
             animation: spinFan 0.7s linear infinite;
             fill: #22c55e !important;
-            filter: drop-shadow(0 0 8px #22c55e);
+            filter: drop-shadow(0 0 10px #22c55e);
         }
+
         @keyframes spinFan {
             100% { transform: rotate(360deg); }
         }
+
         .status-text {
             text-align: center;
-            font-size: 14px;
+            font-size: 0.85rem;
             font-weight: 500;
-            background: #0f172a80;
-            padding: 6px 14px;
-            border-radius: 40px;
+            background: rgba(15, 23, 42, 0.6);
+            padding: 0.4rem 1rem;
+            border-radius: 2rem;
             display: inline-block;
             width: auto;
-            margin: 8px auto;
+            margin: 0.5rem auto;
         }
+
         .button-group {
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 12px;
-            margin: 12px 0 8px;
+            gap: 0.75rem;
+            margin: 1rem 0 0.5rem;
         }
+
         .ctrl-btn {
-            padding: 12px;
-            border-radius: 50px;
+            padding: 0.75rem;
+            border-radius: 3rem;
             font-weight: 700;
             background: #334155;
             border: none;
             color: white;
             cursor: pointer;
             transition: 0.15s;
+            font-size: 0.85rem;
         }
-        .ctrl-btn:active { transform: scale(0.96); }
-        .active-on { background: #22c55e !important; box-shadow: 0 0 12px rgba(34,197,94,0.5); }
-        .active-off { background: #ef4444 !important; box-shadow: 0 0 12px rgba(239,68,68,0.4); }
+
+        .ctrl-btn:active {
+            transform: scale(0.96);
+        }
+
+        .active-on {
+            background: #22c55e !important;
+            box-shadow: 0 0 12px rgba(34, 197, 94, 0.5);
+        }
+
+        .active-off {
+            background: #ef4444 !important;
+            box-shadow: 0 0 12px rgba(239, 68, 68, 0.4);
+        }
+
+        /* Light items - professional naming */
         .light-item {
-            background: rgba(15, 23, 42, 0.6);
-            border-radius: 24px;
-            padding: 14px;
-            margin-top: 12px;
+            background: rgba(15, 23, 42, 0.5);
+            border-radius: 1.5rem;
+            padding: 1rem;
+            margin-top: 0.75rem;
             backdrop-filter: blur(4px);
-            border: 1px solid #334155;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+            transition: all 0.2s;
         }
+
         .light-label {
-            font-size: 15px;
+            font-size: 0.95rem;
             font-weight: 600;
-            margin-bottom: 10px;
+            margin-bottom: 0.6rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
-        .light-glow { color: #fbbf24; text-shadow: 0 0 6px #f59e0b; }
+
+        .light-glow {
+            color: #fbbf24;
+            text-shadow: 0 0 6px #f59e0b;
+        }
+
+        /* Slider */
         .slider-container {
-            margin-top: 12px;
-            padding: 8px 0;
+            margin-top: 0.75rem;
+            padding: 0.5rem 0;
         }
+
         .slider-label {
             display: flex;
             justify-content: space-between;
-            font-size: 12px;
+            font-size: 0.75rem;
             color: #94a3b8;
-            margin-bottom: 6px;
+            margin-bottom: 0.4rem;
         }
+
         input[type="range"] {
             width: 100%;
             height: 5px;
@@ -182,6 +260,7 @@
             background: #334155;
             -webkit-appearance: none;
         }
+
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             width: 18px;
@@ -192,24 +271,22 @@
             box-shadow: 0 0 6px #22c55e;
             border: 2px solid white;
         }
-        input:disabled, .ctrl-btn:disabled, .icon-btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
+
+        /* Server status */
         .server-status {
             text-align: center;
-            font-size: 12px;
-            padding: 10px;
-            margin-top: 16px;
-            border-radius: 60px;
-            background: rgba(15, 23, 42, 0.6);
+            font-size: 0.75rem;
+            padding: 0.6rem;
+            margin-top: 1rem;
+            border-radius: 2rem;
+            background: rgba(15, 23, 42, 0.5);
             backdrop-filter: blur(4px);
             display: flex;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 0.5rem;
         }
+
         .status-badge {
             width: 8px;
             height: 8px;
@@ -217,20 +294,30 @@
             display: inline-block;
             animation: pulse 1.5s infinite;
         }
-        .badge-online { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
-        .badge-offline { background: #ef4444; }
-        @keyframes pulse {
-            0%,100%{ opacity:1; transform:scale(1); }
-            50%{ opacity:0.6; transform:scale(1.2); }
+
+        .badge-online {
+            background: #22c55e;
+            box-shadow: 0 0 6px #22c55e;
         }
+
+        .badge-offline {
+            background: #ef4444;
+        }
+
+        @keyframes pulse {
+            0%,100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.6; transform: scale(1.2); }
+        }
+
+        /* Modal */
         .modal-overlay {
             position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(12px);
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(16px);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -239,73 +326,95 @@
             opacity: 0;
             transition: visibility 0.2s, opacity 0.2s;
         }
+
         .modal-overlay.active {
             visibility: visible;
             opacity: 1;
         }
+
         .login-modal {
-            background: rgba(30, 41, 59, 0.95);
-            border-radius: 32px;
-            padding: 28px 24px;
+            background: rgba(18, 25, 45, 0.95);
+            border-radius: 2rem;
+            padding: 2rem;
             width: calc(100% - 40px);
             max-width: 380px;
-            backdrop-filter: blur(20px);
+            backdrop-filter: blur(24px);
             border: 1px solid rgba(56, 189, 248, 0.3);
+            box-shadow: 0 30px 50px rgba(0, 0, 0, 0.5);
             animation: modalPop 0.3s ease;
         }
+
         @keyframes modalPop {
-            from { transform: scale(0.9); opacity: 0; }
+            from { transform: scale(0.92); opacity: 0; }
             to { transform: scale(1); opacity: 1; }
         }
+
         .login-modal .header {
-            font-size: 28px;
-            margin-bottom: 20px;
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-align: center;
+            background: linear-gradient(135deg, #fef08a, #fcd34d);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
         }
+
         .form-group {
-            margin-bottom: 20px;
+            margin-bottom: 1.25rem;
         }
+
         .form-group label {
             display: block;
-            font-size: 13px;
+            font-size: 0.8rem;
             font-weight: 600;
             color: #cbd5e1;
-            margin-bottom: 8px;
-            margin-left: 8px;
+            margin-bottom: 0.4rem;
+            margin-left: 0.5rem;
         }
+
         .login-modal input {
             width: 100%;
-            padding: 12px 16px;
+            padding: 0.75rem 1rem;
             background: rgba(15, 23, 42, 0.9);
             border: 1.5px solid #334155;
-            border-radius: 60px;
-            font-size: 15px;
+            border-radius: 2rem;
+            font-size: 0.9rem;
             color: white;
         }
+
         .login-modal input:focus {
-            border-color: #38bdf8;
             outline: none;
+            border-color: #38bdf8;
         }
+
         .modal-buttons {
             display: flex;
-            gap: 12px;
-            margin-top: 20px;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
         }
+
         .modal-buttons button {
             flex: 1;
-            padding: 12px;
-            border-radius: 60px;
+            padding: 0.75rem;
+            border-radius: 2rem;
             font-weight: 700;
             border: none;
             cursor: pointer;
+            font-size: 0.85rem;
         }
+
         .modal-login-btn {
             background: linear-gradient(95deg, #f59e0b, #d97706);
             color: white;
         }
+
         .modal-cancel-btn {
             background: #334155;
             color: white;
         }
+
+        /* Toast */
         .toast-message {
             position: fixed;
             bottom: 30px;
@@ -313,9 +422,9 @@
             transform: translateX(-50%);
             background: #1e293b;
             color: #facc15;
-            padding: 10px 24px;
-            border-radius: 60px;
-            font-size: 13px;
+            padding: 0.6rem 1.5rem;
+            border-radius: 3rem;
+            font-size: 0.8rem;
             font-weight: 500;
             z-index: 1100;
             backdrop-filter: blur(12px);
@@ -323,18 +432,14 @@
             pointer-events: none;
             animation: toastFade 2.2s ease forwards;
         }
+
         @keyframes toastFade {
             0% { opacity: 0; transform: translateX(-50%) translateY(20px); }
             15% { opacity: 1; transform: translateX(-50%) translateY(0); }
             85% { opacity: 1; transform: translateX(-50%) translateY(0); }
             100% { opacity: 0; transform: translateX(-50%) translateY(20px); }
         }
-        @media (max-width: 480px) {
-            body { padding: 12px; }
-            .card { padding: 20px 16px; }
-            .title-glow h1 { font-size: 22px; }
-            .icon-btn { padding: 6px 10px; font-size: 10px; }
-        }
+
         .spinner {
             display: inline-block;
             width: 12px;
@@ -344,8 +449,16 @@
             border-top-color: white;
             animation: spin 0.6s linear infinite;
         }
+
         @keyframes spin {
             to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 480px) {
+            body { padding: 12px; }
+            .card { padding: 1.25rem; }
+            .brand h1 { font-size: 1.4rem; }
+            .icon-btn { padding: 0.4rem 0.8rem; font-size: 0.7rem; }
         }
     </style>
 </head>
@@ -354,13 +467,16 @@
 <div class="container">
     <div id="dashboardView">
         <div class="dashboard-header">
-            <div class="title-glow"><h1>⚡ Smart Control</h1></div>
+            <div class="brand">
+                <h1>SmarTech BD</h1>
+                <span class="badge">PRO</span>
+            </div>
             <div class="action-buttons">
                 <button class="icon-btn status-btn" id="currentStatusBtn">📊 Current Status</button>
                 <button class="icon-btn login-header-btn" id="showLoginBtn">🔐 Login</button>
             </div>
         </div>
-        
+
         <!-- Fan Card -->
         <div class="card">
             <div class="card-title">🌀 Fan Commander</div>
@@ -379,33 +495,34 @@
                 <button class="ctrl-btn active-off" id="fanOffBtn" disabled>TURN OFF</button>
             </div>
             <div class="slider-container">
-                <div class="slider-label"><span>🌀 Speed</span><span id="speedPercent">50%</span></div>
+                <div class="slider-label"><span>🌀 Rotation Speed</span><span id="speedPercent">50%</span></div>
                 <input type="range" id="fanSpeedSlider" min="0" max="100" value="50" disabled>
             </div>
         </div>
-        
-        <!-- Lights Card -->
+
+        <!-- Lights Card with professional naming -->
         <div class="card">
             <div class="card-title">💡 Illumination Hub</div>
             <div class="light-item">
-                <div class="light-label" id="light1Label">🏠 Living Light : OFF</div>
+                <div class="light-label" id="light1Label">🛋️ Living Room Light : OFF</div>
                 <div class="button-group">
                     <button class="ctrl-btn" id="light1OnBtn" disabled>ON</button>
                     <button class="ctrl-btn active-off" id="light1OffBtn" disabled>OFF</button>
                 </div>
             </div>
             <div class="light-item">
-                <div class="light-label" id="light2Label">🛌 Bedroom Light : OFF</div>
+                <div class="light-label" id="light2Label">🍽️ Dining Area Light : OFF</div>
                 <div class="button-group">
                     <button class="ctrl-btn" id="light2OnBtn" disabled>ON</button>
                     <button class="ctrl-btn active-off" id="light2OffBtn" disabled>OFF</button>
                 </div>
             </div>
         </div>
-        
+
+        <!-- Server Status -->
         <div class="server-status" id="serverStatus">
             <span class="status-badge badge-offline" id="statusLed"></span>
-            <span id="statusMessage">🔴 Not logged in</span>
+            <span id="statusMessage">🔐 Secure gateway offline</span>
         </div>
     </div>
 </div>
@@ -413,8 +530,8 @@
 <!-- Login Modal -->
 <div id="loginModal" class="modal-overlay">
     <div class="login-modal">
-        <div class="header" style="font-size: 26px; margin-bottom: 10px;">🔐 Access Control</div>
-        <div class="subhead" style="margin-bottom: 20px;">Enter your credentials</div>
+        <div class="header">🔐 Secure Access</div>
+        <div class="subhead" style="text-align: center; font-size: 0.8rem; margin-bottom: 1.5rem; color: #94a3b8;">Enter your secure credentials</div>
         <div class="form-group">
             <label>👤 User ID</label>
             <input type="text" id="modalUserId" placeholder="Your User ID" autocomplete="off">
@@ -431,7 +548,7 @@
 </div>
 
 <script>
-    // ======================= MQTT & STATE =======================
+    // ======================= MQTT & STATE (UNCHANGED LOGIC) =======================
     let mqttClient = null;
     let isConnected = false;
     let reconnectTimer = null;
@@ -442,9 +559,8 @@
         light2State: false
     };
     let runtimeTopics = { statusTopic: "", controlTopic: "" };
-    let lastStateUpdateTime = 0;
     let pendingStatusRequest = false;
-    
+
     // DOM elements
     const showLoginBtn = document.getElementById('showLoginBtn');
     const currentStatusBtn = document.getElementById('currentStatusBtn');
@@ -453,7 +569,7 @@
     const modalPassword = document.getElementById('modalPassword');
     const confirmLoginBtn = document.getElementById('confirmLoginBtn');
     const cancelLoginBtn = document.getElementById('cancelLoginBtn');
-    
+
     const fanOnBtn = document.getElementById('fanOnBtn');
     const fanOffBtn = document.getElementById('fanOffBtn');
     const fanSlider = document.getElementById('fanSpeedSlider');
@@ -461,8 +577,7 @@
     const light1Off = document.getElementById('light1OffBtn');
     const light2On = document.getElementById('light2OnBtn');
     const light2Off = document.getElementById('light2OffBtn');
-    
-    // Helper functions
+
     function showMessage(text, isError = false, duration = 2500) {
         const toast = document.createElement('div');
         toast.className = 'toast-message';
@@ -472,7 +587,7 @@
         document.body.appendChild(toast);
         setTimeout(() => toast.remove(), duration);
     }
-    
+
     function updateDashboardUI() {
         const fanIcon = document.getElementById('fanIcon');
         const fanStatusSpan = document.getElementById('fanStatusText');
@@ -491,49 +606,47 @@
         }
         fanSlider.value = currentState.fanSpeed;
         document.getElementById('speedPercent').innerText = currentState.fanSpeed + '%';
-        
+
         const l1label = document.getElementById('light1Label');
         if (currentState.light1State) {
-            l1label.innerHTML = '🏠 Living Light : ON ✨';
+            l1label.innerHTML = '🛋️ Living Room Light : ON ✨';
             l1label.classList.add('light-glow');
             light1On.classList.add('active-on');
             light1Off.classList.remove('active-off');
         } else {
-            l1label.innerHTML = '🏠 Living Light : OFF';
+            l1label.innerHTML = '🛋️ Living Room Light : OFF';
             l1label.classList.remove('light-glow');
             light1On.classList.remove('active-on');
             light1Off.classList.add('active-off');
         }
-        
+
         const l2label = document.getElementById('light2Label');
         if (currentState.light2State) {
-            l2label.innerHTML = '🛌 Bedroom Light : ON ✨';
+            l2label.innerHTML = '🍽️ Dining Area Light : ON ✨';
             l2label.classList.add('light-glow');
             light2On.classList.add('active-on');
             light2Off.classList.remove('active-off');
         } else {
-            l2label.innerHTML = '🛌 Bedroom Light : OFF';
+            l2label.innerHTML = '🍽️ Dining Area Light : OFF';
             l2label.classList.remove('light-glow');
             light2On.classList.remove('active-on');
             light2Off.classList.add('active-off');
         }
-        lastStateUpdateTime = Date.now();
-        // If we were waiting for a status response, clear the pending flag and show success
+
         if (pendingStatusRequest) {
             pendingStatusRequest = false;
-            showMessage(`✅ Status updated: Fan ${currentState.fanEnabled ? 'ON' : 'OFF'} (${currentState.fanSpeed}%) | Living ${currentState.light1State ? 'ON' : 'OFF'} | Bedroom ${currentState.light2State ? 'ON' : 'OFF'}`, false, 4000);
-            // Reset button text
+            showMessage(`✅ Status refreshed: Fan ${currentState.fanEnabled ? 'ON' : 'OFF'} (${currentState.fanSpeed}%) | Living: ${currentState.light1State ? 'ON' : 'OFF'} | Dining: ${currentState.light2State ? 'ON' : 'OFF'}`, false, 4000);
             const btn = document.getElementById('currentStatusBtn');
             if (btn) btn.innerHTML = '📊 Current Status';
         }
     }
-    
+
     function enableControls(enabled) {
         const btns = [fanOnBtn, fanOffBtn, light1On, light1Off, light2On, light2Off, currentStatusBtn];
         btns.forEach(btn => { if(btn) btn.disabled = !enabled; });
         if (enabled && currentState.fanEnabled) fanSlider.disabled = false;
         else if (!enabled) fanSlider.disabled = true;
-        
+
         const loginHeaderBtn = document.getElementById('showLoginBtn');
         if (enabled) {
             loginHeaderBtn.textContent = "🚪 Logout";
@@ -547,19 +660,19 @@
             loginHeaderBtn.onclick = () => { loginModal.classList.add('active'); };
         }
     }
-    
+
     function updateServerStatus(online, msg) {
         const led = document.getElementById('statusLed');
         const statusSpan = document.getElementById('statusMessage');
         if (online) {
             led.className = 'status-badge badge-online';
-            statusSpan.innerText = msg || '🟢 Server · Live';
+            statusSpan.innerText = msg || '🟢 Secure link active';
         } else {
             led.className = 'status-badge badge-offline';
-            statusSpan.innerText = msg || '🔴 Not connected';
+            statusSpan.innerText = msg || '🔴 Gateway offline';
         }
     }
-    
+
     function onMessageArrived(message) {
         try {
             const payload = message.payloadString;
@@ -577,7 +690,7 @@
             }
         } catch(e) { console.warn(e); }
     }
-    
+
     function onConnectionLost() {
         isConnected = false;
         updateServerStatus(false, '🔴 Connection lost');
@@ -587,7 +700,7 @@
             if (runtimeTopics.statusTopic && runtimeTopics.controlTopic) establishConnection();
         }, 4000);
     }
-    
+
     function sendCommand(cmd) {
         if (!mqttClient || !isConnected) {
             showMessage("Not connected. Please login.", true);
@@ -600,7 +713,7 @@
             return true;
         } catch(e) { return false; }
     }
-    
+
     function establishConnection() {
         if (!runtimeTopics.statusTopic || !runtimeTopics.controlTopic) return;
         if (mqttClient) {
@@ -611,17 +724,17 @@
         mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8884, clientId);
         mqttClient.onMessageArrived = onMessageArrived;
         mqttClient.onConnectionLost = onConnectionLost;
-        
+
         mqttClient.connect({
             useSSL: true,
             timeout: 8,
             onSuccess: () => {
                 isConnected = true;
-                updateServerStatus(true, '🟢 Server · Live');
+                updateServerStatus(true, '🟢 Secure link active');
                 mqttClient.subscribe(runtimeTopics.statusTopic, { qos: 0 });
                 sendCommand("REFRESH_STATE");
                 sendCommand("GET_STATUS");
-                showMessage("✅ Device state saved & synced", false);
+                showMessage("✅ Device state synchronized", false);
                 enableControls(true);
                 updateDashboardUI();
             },
@@ -635,18 +748,18 @@
             }
         });
     }
-    
+
     function saveLoginCredentials(userId, password) {
         localStorage.setItem('smartHomeUserId', userId);
         localStorage.setItem('smartHomePassword', password);
     }
-    
+
     function clearSavedCredentials() {
         localStorage.removeItem('smartHomeUserId');
         localStorage.removeItem('smartHomePassword');
         localStorage.removeItem('deviceState');
     }
-    
+
     function loadSavedCredentials() {
         const userId = localStorage.getItem('smartHomeUserId');
         const pwd = localStorage.getItem('smartHomePassword');
@@ -657,7 +770,7 @@
         }
         return null;
     }
-    
+
     function loadDeviceState() {
         const savedState = localStorage.getItem('deviceState');
         if (savedState) {
@@ -668,7 +781,7 @@
             } catch(e) {}
         }
     }
-    
+
     function performLogin() {
         const userId = modalUserId.value.trim();
         const pwd = modalPassword.value.trim();
@@ -680,7 +793,7 @@
         runtimeTopics.controlTopic = pwd;
         saveLoginCredentials(userId, pwd);
         loginModal.classList.remove('active');
-        showMessage("Connecting to server...", false);
+        showMessage("Connecting to secure gateway...", false);
         if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
         mqttClient = null;
         isConnected = false;
@@ -688,7 +801,7 @@
         updateServerStatus(false, '🔄 Connecting...');
         establishConnection();
     }
-    
+
     function performLogout() {
         if (reconnectTimer) clearTimeout(reconnectTimer);
         if (mqttClient && mqttClient.isConnected()) {
@@ -698,41 +811,36 @@
         isConnected = false;
         runtimeTopics = { statusTopic: "", controlTopic: "" };
         enableControls(false);
-        updateServerStatus(false, '🔴 Not logged in');
+        updateServerStatus(false, '🔐 Gateway offline');
         currentState = { fanEnabled: false, fanSpeed: 50, light1State: false, light2State: false };
         updateDashboardUI();
         clearSavedCredentials();
         showMessage("Logged out successfully", false);
     }
-    
-    // Enhanced Current Status button with active request and timeout
+
     function requestCurrentStatus() {
         if (!isConnected) {
             showMessage("Not connected. Please login first.", true);
             return;
         }
-        // Show loading on button
         const btn = document.getElementById('currentStatusBtn');
         const originalText = btn.innerHTML;
         btn.innerHTML = '<span class="spinner"></span> Fetching...';
         btn.disabled = true;
-        
-        // Send commands to request state
+
         sendCommand("REFRESH_STATE");
         sendCommand("GET_STATUS");
-        
-        // Set a timeout to revert if no response after 3 seconds
+
         pendingStatusRequest = true;
         const timeoutId = setTimeout(() => {
             if (pendingStatusRequest) {
                 pendingStatusRequest = false;
                 btn.innerHTML = originalText;
                 btn.disabled = false;
-                showMessage("⚠️ No response from device. Please check your device is online and connected.", true, 4000);
+                showMessage("⚠️ No response from device. Check network.", true, 4000);
             }
         }, 4000);
-        
-        // Also listen for the next state update to clear timeout
+
         const checkUpdate = setInterval(() => {
             if (!pendingStatusRequest) {
                 clearInterval(checkUpdate);
@@ -742,7 +850,7 @@
             }
         }, 500);
     }
-    
+
     function attemptAutoLogin() {
         const saved = loadSavedCredentials();
         if (saved) {
@@ -752,31 +860,27 @@
             establishConnection();
         } else {
             enableControls(false);
-            updateServerStatus(false, '🔐 Login to start');
+            updateServerStatus(false, '🔐 Secure gateway ready');
         }
     }
-    
+
     function attachControlEvents() {
         fanOnBtn.onclick = () => { sendCommand('FAN_ON'); showMessage("Fan ON requested"); };
         fanOffBtn.onclick = () => { sendCommand('FAN_OFF'); showMessage("Fan OFF requested"); };
         fanSlider.onchange = (e) => { sendCommand('SPEED_' + e.target.value); showMessage(`Speed ${e.target.value}%`); };
-        light1On.onclick = () => { sendCommand('L1_ON'); showMessage("Living Light ON"); };
-        light1Off.onclick = () => { sendCommand('L1_OFF'); showMessage("Living Light OFF"); };
-        light2On.onclick = () => { sendCommand('L2_ON'); showMessage("Bedroom Light ON"); };
-        light2Off.onclick = () => { sendCommand('L2_OFF'); showMessage("Bedroom Light OFF"); };
+        light1On.onclick = () => { sendCommand('L1_ON'); showMessage("Living Room Light ON"); };
+        light1Off.onclick = () => { sendCommand('L1_OFF'); showMessage("Living Room Light OFF"); };
+        light2On.onclick = () => { sendCommand('L2_ON'); showMessage("Dining Area Light ON"); };
+        light2Off.onclick = () => { sendCommand('L2_OFF'); showMessage("Dining Area Light OFF"); };
         currentStatusBtn.onclick = requestCurrentStatus;
     }
-    
-    // Modal handlers
+
     showLoginBtn.onclick = () => { loginModal.classList.add('active'); };
     cancelLoginBtn.onclick = () => { loginModal.classList.remove('active'); };
     confirmLoginBtn.onclick = performLogin;
     loginModal.onclick = (e) => { if (e.target === loginModal) loginModal.classList.remove('active'); };
-    
-    // Slider live preview
     fanSlider.oninput = (e) => { document.getElementById('speedPercent').innerText = e.target.value + '%'; };
-    
-    // Initialize
+
     window.addEventListener('load', () => {
         attachControlEvents();
         loadDeviceState();
