@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>Smart Home Pro | Voice Controlled</title>
+    <title>Smart Home Pro | Voice Control</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
     <style>
         * {
@@ -261,11 +261,11 @@
             bottom: 80px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0,0,0,0.8);
+            background: rgba(0,0,0,0.85);
             backdrop-filter: blur(16px);
-            padding: 8px 20px;
+            padding: 10px 24px;
             border-radius: 40px;
-            font-size: 12px;
+            font-size: 14px;
             color: #facc15;
             pointer-events: none;
             z-index: 1000;
@@ -273,6 +273,7 @@
             font-weight: 500;
             border: 1px solid #facc15;
             transition: opacity 0.2s;
+            font-family: monospace;
         }
 
         /* Modal Login Overlay */
@@ -390,7 +391,7 @@
             .card { padding: 20px 16px; }
             .title-glow h1 { font-size: 22px; }
             .icon-btn { padding: 6px 12px; font-size: 11px; }
-            .voice-feedback { font-size: 10px; white-space: nowrap; bottom: 70px; }
+            .voice-feedback { font-size: 11px; white-space: nowrap; bottom: 70px; padding: 6px 16px; }
         }
     </style>
 </head>
@@ -491,36 +492,45 @@
     // Voice recognition
     let recognition = null;
     let isListening = false;
+    let voiceSupported = false;
     const voiceFeedbackDiv = document.createElement('div');
     voiceFeedbackDiv.className = 'voice-feedback';
     voiceFeedbackDiv.style.opacity = '0';
     document.body.appendChild(voiceFeedbackDiv);
     
-    function setVoiceFeedback(text, isListeningMode = false) {
+    function setVoiceFeedback(text, keepAlive = false) {
         voiceFeedbackDiv.textContent = text;
         voiceFeedbackDiv.style.opacity = '1';
-        if (!isListeningMode) {
-            setTimeout(() => { voiceFeedbackDiv.style.opacity = '0'; }, 2000);
-        } else {
-            // keep visible while listening
+        if (!keepAlive) {
+            setTimeout(() => {
+                if (voiceFeedbackDiv.textContent === text) {
+                    voiceFeedbackDiv.style.opacity = '0';
+                }
+            }, 2500);
         }
     }
     
     function speak(text) {
         if (!window.speechSynthesis) return;
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'en-US';
-        utterance.rate = 0.9;
-        window.speechSynthesis.cancel();
-        window.speechSynthesis.speak(utterance);
+        try {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'en-US';
+            utterance.rate = 0.9;
+            utterance.volume = 1;
+            window.speechSynthesis.speak(utterance);
+        } catch(e) { console.warn("Speech error", e); }
     }
     
     function initVoiceRecognition() {
         if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-            setVoiceFeedback("Voice not supported", false);
-            document.getElementById('micBtn').disabled = true;
+            voiceSupported = false;
+            setVoiceFeedback("Voice not supported in this browser", false);
+            const micBtn = document.getElementById('micBtn');
+            if(micBtn) micBtn.disabled = true;
             return;
         }
+        voiceSupported = true;
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         recognition = new SpeechRecognition();
         recognition.continuous = false;
@@ -530,14 +540,14 @@
         recognition.onstart = () => {
             isListening = true;
             const micBtn = document.getElementById('micBtn');
-            micBtn.classList.add('listening');
+            if(micBtn) micBtn.classList.add('listening');
             setVoiceFeedback("🎤 Listening... speak a command", true);
         };
         
         recognition.onend = () => {
             isListening = false;
             const micBtn = document.getElementById('micBtn');
-            micBtn.classList.remove('listening');
+            if(micBtn) micBtn.classList.remove('listening');
             setTimeout(() => { setVoiceFeedback("", false); }, 500);
         };
         
@@ -545,18 +555,44 @@
             const transcript = event.results[0][0].transcript.toLowerCase();
             setVoiceFeedback(`🗣️ "${transcript}"`, false);
             processVoiceCommand(transcript);
-            // auto-stop listening after one command
-            recognition.stop();
+            // Auto-stop after one command
+            if (recognition) recognition.stop();
         };
         
         recognition.onerror = (event) => {
             console.error("Voice error", event.error);
-            setVoiceFeedback(`Error: ${event.error}`, false);
+            let errorMsg = "";
+            if (event.error === 'not-allowed') errorMsg = "Microphone access denied";
+            else if (event.error === 'no-speech') errorMsg = "No speech detected";
+            else errorMsg = `Error: ${event.error}`;
+            setVoiceFeedback(errorMsg, false);
             const micBtn = document.getElementById('micBtn');
-            micBtn.classList.remove('listening');
+            if(micBtn) micBtn.classList.remove('listening');
             isListening = false;
-            setTimeout(() => { setVoiceFeedback("", false); }, 1500);
+            setTimeout(() => setVoiceFeedback("", false), 2000);
         };
+    }
+    
+    function startVoiceListening() {
+        if (!voiceSupported) {
+            setVoiceFeedback("Voice not supported", false);
+            return;
+        }
+        if (!isConnected) {
+            setVoiceFeedback("Not connected. Please login first.", false);
+            speak("Please login first.");
+            return;
+        }
+        if (isListening) {
+            if (recognition) recognition.stop();
+            return;
+        }
+        try {
+            recognition.start();
+        } catch(e) {
+            setVoiceFeedback("Voice busy, try again", false);
+            console.warn(e);
+        }
     }
     
     function processVoiceCommand(transcript) {
@@ -566,7 +602,6 @@
             return;
         }
         
-        // Command patterns
         let commandSent = false;
         const lower = transcript;
         
@@ -580,9 +615,9 @@
             speak("Turning fan off");
             commandSent = true;
         }
-        // Fan speed: "set fan speed to 50", "fan speed 75"
+        // Fan speed
         else if (lower.includes("fan speed") || (lower.includes("speed") && lower.includes("fan"))) {
-            let match = lower.match(/(\d+)/);
+            let match = lower.match(/\b\d{1,3}\b/);
             if (match) {
                 let speed = parseInt(match[0]);
                 if (speed >= 0 && speed <= 100) {
@@ -596,50 +631,35 @@
                 speak("Please say a number for fan speed");
             }
         }
-        // Light 1 (Living Light)
-        else if (lower.includes("living light on") || lower.includes("turn on living light") || (lower.includes("light one on"))) {
+        // Light 1 (Living)
+        else if (lower.includes("living light on") || lower.includes("turn on living light") || lower.includes("light one on")) {
             sendCommand("L1_ON");
             speak("Living light turned on");
             commandSent = true;
-        } else if (lower.includes("living light off") || lower.includes("turn off living light") || (lower.includes("light one off"))) {
+        } else if (lower.includes("living light off") || lower.includes("turn off living light") || lower.includes("light one off")) {
             sendCommand("L1_OFF");
             speak("Living light turned off");
             commandSent = true;
         }
-        // Light 2 (Bedroom Light)
-        else if (lower.includes("bedroom light on") || lower.includes("turn on bedroom light") || (lower.includes("light two on"))) {
+        // Light 2 (Bedroom)
+        else if (lower.includes("bedroom light on") || lower.includes("turn on bedroom light") || lower.includes("light two on")) {
             sendCommand("L2_ON");
             speak("Bedroom light turned on");
             commandSent = true;
-        } else if (lower.includes("bedroom light off") || lower.includes("turn off bedroom light") || (lower.includes("light two off"))) {
+        } else if (lower.includes("bedroom light off") || lower.includes("turn off bedroom light") || lower.includes("light two off")) {
             sendCommand("L2_OFF");
             speak("Bedroom light turned off");
             commandSent = true;
         }
-        // Help command
+        // Help
         else if (lower.includes("help") || lower.includes("what can i say")) {
             speak("You can say: fan on, fan off, set fan speed to a number, living light on or off, bedroom light on or off");
-            setVoiceFeedback("Try: fan on, living light off, set fan speed to 60", false);
+            setVoiceFeedback("Commands: fan on/off, speed, living/bedroom light", false);
             commandSent = true;
         }
         
         if (!commandSent) {
             speak("Sorry, I didn't understand. Say help for commands.");
-        }
-    }
-    
-    function startVoiceListening() {
-        if (!recognition) {
-            initVoiceRecognition();
-        }
-        if (isListening) {
-            recognition.stop();
-            return;
-        }
-        try {
-            recognition.start();
-        } catch(e) {
-            setVoiceFeedback("Voice busy, try again", false);
         }
     }
     
@@ -660,7 +680,7 @@
     const light2On = document.getElementById('light2OnBtn');
     const light2Off = document.getElementById('light2OffBtn');
     
-    // Helper functions (same as before)
+    // Helper functions
     function showMessage(text, isError = false, duration = 2500) {
         const toast = document.createElement('div');
         toast.className = 'toast-message';
@@ -722,7 +742,7 @@
         btns.forEach(btn => { if(btn) btn.disabled = !enabled; });
         if (enabled && currentState.fanEnabled) fanSlider.disabled = false;
         else if (!enabled) fanSlider.disabled = true;
-        micBtn.disabled = !enabled;
+        if (micBtn) micBtn.disabled = !enabled;
         
         const loginHeaderBtn = document.getElementById('showLoginBtn');
         if (enabled) {
@@ -790,7 +810,10 @@
     
     function establishConnection() {
         if (!runtimeTopics.statusTopic || !runtimeTopics.controlTopic) return;
-        if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
+        if (mqttClient) {
+            try { mqttClient.disconnect(); } catch(e) {}
+            mqttClient = null;
+        }
         const clientId = "ctrl_" + Math.random().toString(36).substring(2, 10);
         mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8884, clientId);
         mqttClient.onMessageArrived = onMessageArrived;
@@ -809,10 +832,12 @@
                 enableControls(true);
                 updateDashboardUI();
             },
-            onFailure: () => {
+            onFailure: (err) => {
+                console.warn("Connection failed", err);
                 isConnected = false;
                 updateServerStatus(false, '🔴 Connection failed');
                 enableControls(false);
+                if (reconnectTimer) clearTimeout(reconnectTimer);
                 reconnectTimer = setTimeout(() => establishConnection(), 5000);
             }
         });
@@ -864,6 +889,7 @@
         loginModal.classList.remove('active');
         showMessage("Connecting to server...", false);
         if (mqttClient) { try { mqttClient.disconnect(); } catch(e) {} }
+        mqttClient = null;
         isConnected = false;
         enableControls(false);
         updateServerStatus(false, '🔄 Connecting...');
@@ -884,6 +910,7 @@
         updateDashboardUI();
         clearSavedCredentials();
         showMessage("Logged out successfully", false);
+        // Re-enable mic button? No, it will be disabled by enableControls(false)
     }
     
     function attemptAutoLogin() {
@@ -907,7 +934,7 @@
         light1Off.onclick = () => { sendCommand('L1_OFF'); showMessage("Living Light OFF"); };
         light2On.onclick = () => { sendCommand('L2_ON'); showMessage("Bedroom Light ON"); };
         light2Off.onclick = () => { sendCommand('L2_OFF'); showMessage("Bedroom Light OFF"); };
-        micBtn.onclick = startVoiceListening;
+        if(micBtn) micBtn.onclick = startVoiceListening;
     }
     
     // Modal handlers
@@ -924,8 +951,8 @@
         attachControlEvents();
         loadDeviceState();
         updateDashboardUI();
-        attemptAutoLogin();
         initVoiceRecognition();
+        attemptAutoLogin();
     });
 </script>
 </body>
