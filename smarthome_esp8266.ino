@@ -9,6 +9,11 @@
 #include <AsyncMqttClient.h>
 #include <user_interface.h>
 
+// ========== US_TO_RTC_TIMER_TICKS ম্যাক্রো ডিফাইন (ESP8266 Timer1 এর জন্য) ==========
+#ifndef US_TO_RTC_TIMER_TICKS
+#define US_TO_RTC_TIMER_TICKS(us) ((us) * (F_CPU / 1000000L) / 16)
+#endif
+
 // ========== EEPROM ADDRESSES ==========
 #define EEPROM_SIZE 1024
 #define WIFI_SSID_ADDR 0
@@ -73,11 +78,6 @@ bool fanEnabled = false;
 // ===== LIGHT STATES =====
 bool light1State = false;
 bool light2State = false;
-
-// ===== TRIAC STATE MACHINE =====
-enum TriacState { IDLE, WAIT_DELAY, OUTPUT_ON };
-TriacState triacState = IDLE;
-volatile unsigned long lowStartMicros = 0;
 
 // ===== EEPROM SMART TIMER =====
 bool stateSavePending = false;
@@ -345,51 +345,40 @@ void updateEffectiveDelay() {
   effectiveDelayMicros = delayMicros;
 }
 
-// ===== ZERO CROSS ISR =====
-void IRAM_ATTR zcISR() {
-  if (digitalRead(ZC_PIN) == LOW) {
-    lowStartMicros = micros();
-  }
+// ====== হার্ডওয়্যার টাইমার (Timer1) দিয়ে ট্রায়াক নিয়ন্ত্রণ ======
+volatile bool timerArmed = false;
+
+void ICACHE_RAM_ATTR onTimerISR() {
+  digitalWrite(TRIAC_PIN, HIGH);
+  delayMicroseconds(50);
+  digitalWrite(TRIAC_PIN, LOW);
+  timer1_disable();
+  timerArmed = false;
 }
 
-// ===== NON-BLOCKING TRIAC STATE MACHINE =====
-void handleTriacStateMachine() {
+void ICACHE_RAM_ATTR zcISR() {
   if (!fanEnabled) {
+    if (timerArmed) {
+      timer1_disable();
+      timerArmed = false;
+    }
     digitalWrite(TRIAC_PIN, LOW);
-    triacState = IDLE;
     return;
   }
-  
-  bool zc = digitalRead(ZC_PIN);
-  unsigned long now = micros();
 
-  switch (triacState) {
-    case IDLE:
-      if (zc == LOW) {
-        lowStartMicros = now;
-        triacState = WAIT_DELAY;
-      }
-      break;
-
-    case WAIT_DELAY:
-      if (zc == LOW) {
-        if (now - lowStartMicros >= effectiveDelayMicros) {
-          digitalWrite(TRIAC_PIN, HIGH);
-          triacState = OUTPUT_ON;
-        }
-      } else {
-        digitalWrite(TRIAC_PIN, HIGH);
-        triacState = OUTPUT_ON;
-      }
-      break;
-
-    case OUTPUT_ON:
-      if (zc == HIGH) {
-        digitalWrite(TRIAC_PIN, LOW);
-        triacState = IDLE;
-      }
-      break;
+  if (effectiveDelayMicros >= MAX_DELAY) {
+    if (timerArmed) {
+      timer1_disable();
+      timerArmed = false;
+    }
+    digitalWrite(TRIAC_PIN, LOW);
+    return;
   }
+
+  if (timerArmed) timer1_disable();
+  timer1_write(US_TO_RTC_TIMER_TICKS(effectiveDelayMicros));
+  timer1_enable(TIM_DIV16, TIM_EDGE, TIM_SINGLE);
+  timerArmed = true;
 }
 
 // ===== JSON STATE STRING =====
@@ -431,7 +420,7 @@ void publishMqttStatus() {
   }
 }
 
-// ===== WEB PAGES =====
+// ===== WEB PAGES (অপরিবর্তিত) =====
 String wifiPage() {
   return "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#fff;height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}.card{background:#1e293b;border-radius:18px;padding:30px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.4);}.title{font-size:24px;font-weight:bold;text-align:center;margin-bottom:20px;color:#60a5fa;}input{width:100%;padding:12px;margin:10px 0;border:2px solid #334155;background:#0f172a;border-radius:10px;color:#fff;}input:focus{outline:none;border-color:#60a5fa;}label{display:block;font-weight:600;margin-top:10px;}button{width:100%;padding:12px;background:#f59e0b;color:white;border:none;border-radius:10px;margin-top:20px;cursor:pointer;}.back-btn{background:#475569;margin-top:10px;}</style></head><body><div class='card'><div class='title'>WiFi Settings</div><form action='/save'><label>SSID</label><input type='text' name='s' placeholder='Network name' required><label>Password</label><input type='password' name='p' placeholder='Password' required><button type='submit'>Save</button></form><button class='back-btn' onclick=\"location.href='/'\">Back</button></div></body></html>";
 }
@@ -444,13 +433,10 @@ String settingsPage() {
   return "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}.card{background:#1e293b;border-radius:18px;padding:25px;width:100%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);}.title{font-size:24px;font-weight:bold;text-align:center;margin-bottom:20px;color:#60a5fa;}.button-group{display:flex;flex-direction:column;gap:15px;}button{padding:14px;border:none;border-radius:10px;font-size:16px;font-weight:600;cursor:pointer;transition:all 0.2s;}.btn-primary{background:#8b5cf6;color:white;}.btn-toggle{background:#475569;color:#94a3b8;}.active-on{background:#22c55e !important;color:white !important;box-shadow:0 4px 12px rgba(34,197,94,0.3);}.back-btn{background:#475569;color:white;margin-top:10px;}</style><script>let memoryEnabled=false;let wifiModeEnabled=false;async function toggleMemory(){let newState=!memoryEnabled;let endpoint=newState?'/api/memoryon':'/api/memoryoff';await fetch(endpoint);memoryEnabled=newState;const btn=document.getElementById('memBtn');if(memoryEnabled) btn.classList.add('active-on'); else btn.classList.remove('active-on');}async function toggleWiFiMode(){let newState=!wifiModeEnabled;let endpoint=newState?'/api/wifisafeon':'/api/wifisafeoff';await fetch(endpoint);wifiModeEnabled=newState;const btn=document.getElementById('wifiModeBtn');if(wifiModeEnabled) btn.classList.add('active-on'); else btn.classList.remove('active-on');}async function updateStatuses(){let mem=await(await fetch('/api/memorystatus')).json();let wfm=await(await fetch('/api/wifisafestatus')).json();memoryEnabled=mem.enabled;wifiModeEnabled=wfm.enabled;if(memoryEnabled) document.getElementById('memBtn').classList.add('active-on');if(wifiModeEnabled) document.getElementById('wifiModeBtn').classList.add('active-on');}window.addEventListener('load',()=>{updateStatuses();});</script></head><body><div class='card'><div class='title'>⚙️ Settings</div><div class='button-group'><button class='btn-primary' onclick=\"location.href='/remote'\">📡 Remote Settings</button><button id='memBtn' class='btn-toggle' onclick='toggleMemory()'>💾 Memory Save</button><button id='wifiModeBtn' class='btn-toggle' onclick='toggleWiFiMode()'>📶 WiFi Mode</button><button class='back-btn' onclick=\"location.href='/'\">← Back to Home</button></div></div></body></html>";
 }
 
-// Main page – now with Done button and auto-redirect logic
 String webpageMain() {
   if (mqttConnected) {
-    // MQTT connected: show success message with Done button + auto-redirect script
     return "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>body{background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#fff;height:100vh;display:flex;align-items:center;justify-content:center;text-align:center;margin:0;}.card{background:#1e293b;border-radius:18px;padding:30px;max-width:90%;box-shadow:0 8px 32px rgba(0,0,0,0.4);}.title{font-size:28px;font-weight:bold;color:#22c55e;margin-bottom:10px;}.sub{font-size:16px;color:#94a3b8;margin-bottom:20px;}.done-btn{background:#22c55e;color:white;border:none;padding:12px 24px;border-radius:40px;font-size:18px;font-weight:bold;cursor:pointer;margin-top:10px;}</style><script>function isLocalNetwork(){let host=window.location.hostname;return (host==='smarthome.local' || host.startsWith('192.168.') || host.startsWith('10.') || host.startsWith('172.') || host==='localhost');}function redirectToGithub(){localStorage.setItem('smarthome_redirect_done','true');window.location.href='https://masumbillah987.github.io/samrt_home/';}if(isLocalNetwork()){let redirectFlag=localStorage.getItem('smarthome_redirect_done');if(redirectFlag==='true'){window.location.href='https://masumbillah987.github.io/samrt_home/';}}</script></head><body><div class='card'><div class='title'>✓ Connected successfully</div><div class='sub'>Connect your device with home wifi now...</div><button class='done-btn' onclick='redirectToGithub()'>Done</button></div></body></html>";
   } else {
-    // MQTT not connected: full control panel with auto-reload when MQTT connects
     return "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no'><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#fff;height:100vh;width:100vw;overflow:hidden;display:flex;justify-content:center;align-items:center;padding:10px;}.container{width:100%;max-width:420px;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:5px 0;}.header{text-align:center;font-size:24px;font-weight:bold;letter-spacing:1px;color:#fff;flex:0 0 auto;}.card{background:#1e293b;border-radius:16px;padding:15px;margin:5px 0;box-shadow:0 8px 32px rgba(0,0,0,0.4);color:#fff;display:flex;flex-direction:column;justify-content:center;}.fan-card{flex:0 1 auto;min-height:200px;max-height:55vh;overflow-y:auto;}.lights-card{flex:0 0 auto;}.wifi-card{flex:0 0 auto;background:transparent;box-shadow:none;padding:0;margin:5px 0 0 0;}.card-title{font-size:16px;font-weight:600;margin-bottom:10px;color:#60a5fa;}.button-group{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0;}button{padding:12px 15px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;user-select:none;}.btn-state{background:#475569;color:#94a3b8;}.active-on{background:#22c55e !important;color:white !important;box-shadow:0 4px 12px rgba(34,197,94,0.3);}.active-off{background:#ef4444 !important;color:white !important;box-shadow:0 4px 12px rgba(239,68,68,0.2);}.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}.btn-wifi{background:#f59e0b;color:white;width:100%;padding:12px;box-shadow:0 4px 12px rgba(245,158,11,0.2);}.btn-remote{background:#8b5cf6;color:white;width:100%;padding:12px;box-shadow:0 4px 12px rgba(139,92,246,0.2);}.fan-container{display:flex;justify-content:center;align-items:center;flex:1;min-height:60px;}.fan-icon{width:80px;height:80px;fill:#475569;transition:fill 0.3s ease;}.fan-icon.spinning{animation:spin 0.8s linear infinite;fill:#22c55e;}@keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}.status{text-align:center;font-size:14px;font-weight:600;color:#60a5fa;margin:5px 0;}.slider-container{padding:10px 0;display:flex;flex-direction:column;gap:5px;}.slider-label{display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;}input[type=range]{-webkit-appearance:none;width:100%;background:transparent;}input[type=range]:focus{outline:none;}input[type=range]::-webkit-slider-runnable-track{width:100%;height:8px;cursor:pointer;background:#334155;border-radius:10px;}input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:20px;width:20px;border-radius:50%;background:#22c55e;cursor:pointer;margin-top:-6px;box-shadow:0 0 8px rgba(34,197,94,0.5);}input[type=range]:disabled::-webkit-slider-thumb{background:#475569;box-shadow:none;cursor:not-allowed;}.light-item{background:#0f172a;border-radius:12px;padding:10px 12px;margin:5px 0;border:1px solid #334155;display:flex;flex-direction:column;}.light-label{font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:5px;}.light-active{color:#22c55e !important;}</style><script>let currentSpeed=50;let isUpdatingSlider=false;let memoryEnabled=false;let wifiModeEnabled=false;async function updateState(action){try{const response=await fetch('/api/'+action);if(response.ok){const data=await response.json();updateUI(data);}}catch(e){console.error('Error:',e);}}async function handleSliderChange(val){if(isUpdatingSlider)return;isUpdatingSlider=true;let target=parseInt(val);document.getElementById('speedLabel').textContent=target+'%';try{const response=await fetch('/api/speed?value='+target);if(response.ok){const data=await response.json();updateUI(data);}}catch(e){console.error('Error:',e);}isUpdatingSlider=false;}function updateUI(data){currentSpeed=data.fanSpeed;document.getElementById('fanStatus').textContent='Fan is '+(data.fanEnabled?'ON':'OFF');document.getElementById('light1Status').textContent='Light 1: '+(data.light1State?'ON':'OFF');document.getElementById('light2Status').textContent='Light 2: '+(data.light2State?'ON':'OFF');if(!isUpdatingSlider){document.getElementById('fanSlider').value=data.fanSpeed;document.getElementById('speedLabel').textContent=data.fanSpeed+'%';}document.getElementById('fanSlider').disabled=!data.fanEnabled;const fanIcon=document.getElementById('fanIcon');if(data.fanEnabled){fanIcon.classList.add('spinning');document.getElementById('btnFanOn').classList.add('active-on');document.getElementById('btnFanOff').classList.remove('active-off');}else{fanIcon.classList.remove('spinning');document.getElementById('btnFanOn').classList.remove('active-on');document.getElementById('btnFanOff').classList.add('active-off');}if(data.light1State){document.getElementById('light1Status').classList.add('light-active');document.getElementById('btnL1On').classList.add('active-on');document.getElementById('btnL1Off').classList.remove('active-off');}else{document.getElementById('light1Status').classList.remove('light-active');document.getElementById('btnL1On').classList.remove('active-on');document.getElementById('btnL1Off').classList.add('active-off');}if(data.light2State){document.getElementById('light2Status').classList.add('light-active');document.getElementById('btnL2On').classList.add('active-on');document.getElementById('btnL2Off').classList.remove('active-off');}else{document.getElementById('light2Status').classList.remove('light-active');document.getElementById('btnL2On').classList.remove('active-on');document.getElementById('btnL2Off').classList.add('active-off');}}async function listenForIRChanges(){while(true){try{const response=await fetch('/api/changed');if(response.ok){const data=await response.json();if(data.changed){updateUI(data);}}}catch(e){await new Promise(r=>setTimeout(r,2000));}}}async function toggleMemory(){let newState=!memoryEnabled;let endpoint=newState?'/api/memoryon':'/api/memoryoff';await fetch(endpoint);memoryEnabled=newState;document.getElementById('memBtn').classList.toggle('active-on',memoryEnabled);}async function toggleWiFiMode(){let newState=!wifiModeEnabled;let endpoint=newState?'/api/wifisafeon':'/api/wifisafeoff';await fetch(endpoint);wifiModeEnabled=newState;document.getElementById('wifiModeBtn').classList.toggle('active-on',wifiModeEnabled);}async function checkMqttAndReload(){try{let res=await fetch('/api/mqttstatus');let data=await res.json();if(data.connected){location.reload();}}catch(e){}}window.addEventListener('load',()=>{fetch('/api/memorystatus').then(r=>r.json()).then(d=>{memoryEnabled=d.enabled;if(memoryEnabled) document.getElementById('memBtn').classList.add('active-on');});fetch('/api/wifisafestatus').then(r=>r.json()).then(d=>{wifiModeEnabled=d.enabled;if(wifiModeEnabled) document.getElementById('wifiModeBtn').classList.add('active-on');});fetch('/api/status').then(r=>r.json()).then(d=>{updateUI(d);});listenForIRChanges();setInterval(checkMqttAndReload,3000);});</script></head><body><div class='container'><div class='header'>Smart Home</div><div class='card fan-card'><div class='card-title'>Fan Control</div><div class='fan-container'><svg id='fanIcon' class='fan-icon' viewBox='0 0 100 100'><circle cx='50' cy='50' r='6' fill='white'/><path d='M50 10 Q70 30 50 50 Q30 30 50 10'/><path d='M90 50 Q70 70 50 50 Q70 30 90 50'/><path d='M50 90 Q30 70 50 50 Q70 70 50 90'/><path d='M10 50 Q30 30 50 50 Q30 70 10 50'/></svg></div><div class='status' id='fanStatus'>Fan is OFF</div><div class='button-group'><button id='btnFanOn' class='btn-state' onclick='updateState(\"on\")'>On</button><button id='btnFanOff' class='btn-state' onclick='updateState(\"off\")'>Off</button></div><div class='slider-container'><div class='slider-label'><span>Speed</span><span id='speedLabel'>50%</span></div><input type='range' id='fanSlider' min='0' max='100' value='50' oninput='handleSliderChange(this.value)'></div></div><div class='card lights-card'><div class='card-title'>Lights Control</div><div class='light-item'><div class='light-label' id='light1Status'>Light 1: OFF</div><div class='button-group'><button id='btnL1On' class='btn-state' onclick='updateState(\"l1on\")'>On</button><button id='btnL1Off' class='btn-state' onclick='updateState(\"l1off\")'>Off</button></div></div><div class='light-item'><div class='light-label' id='light2Status'>Light 2: OFF</div><div class='button-group'><button id='btnL2On' class='btn-state' onclick='updateState(\"l2on\")'>On</button><button id='btnL2Off' class='btn-state' onclick='updateState(\"l2off\")'>Off</button></div></div></div><div class='card' style='padding:10px; margin-top:5px;'><div class='card-title'>System Settings</div><div class='button-group'><button id='memBtn' class='btn-state' onclick='toggleMemory()'>Memory Save</button><button id='wifiModeBtn' class='btn-state' onclick='toggleWiFiMode()'>WiFi Mode</button></div></div><div class='card wifi-card'><div class='btn-row'><button class='btn-wifi' onclick=\"location.href='/wifi'\">WiFi Setup</button><button class='btn-remote' onclick=\"location.href='/settings'\">Settings</button></div></div></div></body></html>";
   }
 }
@@ -708,7 +694,10 @@ void setup() {
   digitalWrite(LIGHT1_PIN, LOW);
   digitalWrite(LIGHT2_PIN, LOW);
   digitalWrite(TRIAC_PIN, LOW);
-  attachInterrupt(digitalPinToInterrupt(ZC_PIN), zcISR, CHANGE);
+  
+  attachInterrupt(digitalPinToInterrupt(ZC_PIN), zcISR, FALLING);
+  timer1_attachInterrupt(onTimerISR);
+  
   irrecv.enableIRIn();
   loadWiFi();
   loadMQTTConfig();
@@ -760,8 +749,6 @@ void loop() {
     ESP.restart();
   }
 
-  handleTriacStateMachine();
-
   if (currentMillis - lastIRCheckTime >= IR_CHECK_INTERVAL) {
     lastIRCheckTime = currentMillis;
     handleIR();
@@ -769,11 +756,8 @@ void loop() {
   commitStateIfPending();
 
   if (memorySaveEnabled && stateDirty) {
-    unsigned long now = micros();
-    if (now - lowStartMicros > 30000) {
-      saveStateToEEPROM();
-      stateDirty = false;
-    }
+    saveStateToEEPROM();
+    stateDirty = false;
   }
 
   if (wifiSafeEnabled && WiFi.status() != WL_CONNECTED) {
