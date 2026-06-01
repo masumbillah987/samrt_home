@@ -64,47 +64,20 @@ bool apEnabled = true;
 #define LIGHT2_PIN D8
 
 // ===== SPEED =====
-volatile int delayMicros = 5000;
-volatile int effectiveDelayMicros = 5000;
-const int MIN_DELAY = 1500;
-const int MAX_DELAY = 9000;
+volatile int delayMicros = 5000;          // User requested delay
+volatile int effectiveDelayMicros = 5000; // Actual delay used by TRIAC
+const int MIN_DELAY = 0;
+const int MAX_DELAY = 4000;
 bool fanEnabled = false;
 
 // ===== LIGHT STATES =====
 bool light1State = false;
 bool light2State = false;
 
-// ===== TRIAC =====
-volatile bool zcDetected = false;
-volatile bool triacOn = false;
-volatile unsigned long zcTime = 0;
-volatile unsigned long lastTriacFire = 0;
-volatile unsigned long lastZCTime = 0;
-
-const int TRIAC_PULSE = 10;
-const int ZC_DEBOUNCE = 5000;
-
-// ===== DUTY CYCLE MEASUREMENT (CORRECTED) =====
-volatile unsigned long lowStartTime = 0;
-volatile unsigned long lowDuration = 0;
-volatile bool dutyCycleReady = false;
-float filteredDutyCycle = 50.0;
-const float DUTY_ALPHA = 0.3;
-const unsigned long AC_PERIOD = 20000;  // 20ms for 50Hz
-
-// ===== SPEED LIMITING (NEW THRESHOLDS) =====
-int maxAllowedPercent = 100;
-int lastDutyRange = -1;
-int dutyRangeCounter = 0;
-const int REQUIRED_CONSECUTIVE = 3;
-
-int getMaxSpeedForDuty(float duty) {
-  if (duty < 63.0) return 100;
-  if (duty <= 68.0) return 70;
-  if (duty <= 73.0) return 58;
-  if (duty <= 75.0) return 50;
-  return 30;  // > 75%
-}
+// ===== TRIAC STATE MACHINE =====
+enum TriacState { IDLE, WAIT_DELAY, OUTPUT_ON };
+TriacState triacState = IDLE;
+volatile unsigned long lowStartMicros = 0;   // start of LOW period (set in ISR)
 
 // ===== EEPROM SMART TIMER =====
 bool stateSavePending = false;
@@ -149,6 +122,17 @@ bool wifiSafeEnabled = false;
 unsigned long wifiConnectStartTime = 0;
 const unsigned long WIFI_TIMEOUT = 10000;
 
+// ===== NON-BLOCKING RESET =====
+bool resetPending = false;
+unsigned long resetStartTime = 0;
+const unsigned long RESET_DELAY_MS = 500;
+
+// ===== CLAMP FUNCTION (FIXES SLIDER RANGE) =====
+void clampDelayMicros() {
+  if (delayMicros < MIN_DELAY) delayMicros = MIN_DELAY;
+  if (delayMicros > MAX_DELAY) delayMicros = MAX_DELAY;
+}
+
 // Forward declarations
 String getStateJSON();
 void publishMqttStatus();
@@ -160,6 +144,7 @@ String webpageUnified();
 String wifiPage();
 String remotePage();
 void updateEffectiveDelay();
+void apiSetSpeed();
 
 // ===== CHECKSUM FUNCTIONS =====
 uint32_t calculateChecksum(StateData& data) {
@@ -192,7 +177,7 @@ uint32_t calculateMQTTChecksum(MQTTConfig& data) {
   return sum * 13;
 }
 
-// ===== LOAD / SAVE FUNCTIONS =====
+// ===== LOAD / SAVE MQTT CONFIG =====
 void loadMQTTConfig() {
   for (int i = 0; i < sizeof(MQTTConfig); i++) {
     ((byte*)&mqttConfig)[i] = EEPROM.read(MQTT_CONFIG_ADDR + i);
@@ -221,6 +206,7 @@ void loadState() {
   uint32_t calc = calculateChecksum(stateData);
   if (calc == stateData.checksum) {
     delayMicros = stateData.delayMicros;
+    clampDelayMicros();              // enforce valid range after loading
     effectiveDelayMicros = delayMicros;
     fanEnabled = stateData.fanEnabled;
     light1State = stateData.light1State;
@@ -354,111 +340,65 @@ void updateEffectiveDelay() {
     effectiveDelayMicros = MAX_DELAY;
     return;
   }
-  int userPercent = map(delayMicros, MAX_DELAY, MIN_DELAY, 0, 100);
-  userPercent = constrain(userPercent, 0, 100);
-  int limitedPercent = min(userPercent, maxAllowedPercent);
-  if (limitedPercent == 0) {
-    effectiveDelayMicros = MAX_DELAY;
-  } else {
-    effectiveDelayMicros = map(limitedPercent, 0, 100, MAX_DELAY, MIN_DELAY);
-    effectiveDelayMicros = constrain(effectiveDelayMicros, MIN_DELAY, MAX_DELAY);
-  }
+  effectiveDelayMicros = delayMicros;
 }
 
-// ===== ZERO CROSS ISR (CORRECT DUTY CYCLE MEASUREMENT) =====
+// ===== ZERO CROSS ISR =====
 void IRAM_ATTR zcISR() {
-  unsigned long now = micros();
-  
   if (digitalRead(ZC_PIN) == LOW) {
-    // Falling edge - START of LOW period
-    lowStartTime = now;
-  } else {
-    // Rising edge - END of LOW period
-    if (lowStartTime != 0) {
-      lowDuration = now - lowStartTime;
-      dutyCycleReady = true;
-      lowStartTime = 0;
-    }
-    // TRIAC zero cross detection
-    if (now - lastZCTime >= ZC_DEBOUNCE) {
-      lastZCTime = now;
-      zcDetected = true;
-      zcTime = now;
-      digitalWrite(TRIAC_PIN, LOW);
-      triacOn = false;
-    }
+    lowStartMicros = micros();
   }
 }
 
-// ===== UPDATE MAX SPEED FROM DUTY CYCLE =====
-void updateMaxSpeedFromDuty() {
-  if (dutyCycleReady) {
-    dutyCycleReady = false;
-    if (lowDuration > 500 && lowDuration < AC_PERIOD) {
-      // Duty cycle = (HIGH period / total period) * 100
-      // HIGH period = total period - LOW period
-      unsigned long highPeriod = AC_PERIOD - lowDuration;
-      float duty = (highPeriod * 100.0) / AC_PERIOD;
-      duty = constrain(duty, 0.0, 100.0);
-      
-      // Low-pass filter
-      filteredDutyCycle = DUTY_ALPHA * duty + (1.0 - DUTY_ALPHA) * filteredDutyCycle;
-      
-      // Debug print every 2 seconds
-      static unsigned long lastPrint = 0;
-      if (millis() - lastPrint > 2000) {
-        lastPrint = millis();
-        Serial.print("[DUTY] Raw="); Serial.print(duty);
-        Serial.print("% | Filtered="); Serial.print(filteredDutyCycle);
-        Serial.print("% | MaxSpeed="); Serial.println(getMaxSpeedForDuty(filteredDutyCycle));
-      }
-      
-      // Determine range with persistence (3 consecutive readings)
-      int newMax = getMaxSpeedForDuty(filteredDutyCycle);
-      int currentRange = (newMax == 100) ? 0 : (newMax == 70) ? 1 : (newMax == 58) ? 2 : 3;
-      
-      if (currentRange == lastDutyRange) {
-        dutyRangeCounter++;
-      } else {
-        lastDutyRange = currentRange;
-        dutyRangeCounter = 1;
-      }
-      
-      if (dutyRangeCounter >= REQUIRED_CONSECUTIVE) {
-        if (newMax != maxAllowedPercent) {
-          maxAllowedPercent = newMax;
-          Serial.print("[LIMIT] New max speed = ");
-          Serial.print(maxAllowedPercent);
-          Serial.print("% (Duty=");
-          Serial.print(filteredDutyCycle);
-          Serial.println("%)");
-          updateEffectiveDelay();
-        }
-      }
-    }
-  }
-}
-
-// ===== TRIAC FIRING =====
-inline void handleTriac() {
-  if (!zcDetected) return;
-  unsigned long now = micros();
-  if (!triacOn && fanEnabled && (now - zcTime) >= effectiveDelayMicros) {
-    digitalWrite(TRIAC_PIN, HIGH);
-    triacOn = true;
-    lastTriacFire = now;
-  }
-  if (triacOn && (now - lastTriacFire) >= TRIAC_PULSE) {
+// ===== NON-BLOCKING TRIAC STATE MACHINE (FIXED - Fan OFF = Triac 0%) =====
+void handleTriacStateMachine() {
+  // If fan is OFF, keep triac completely OFF (0% power)
+  if (!fanEnabled) {
     digitalWrite(TRIAC_PIN, LOW);
-    triacOn = false;
-    zcDetected = false;
+    triacState = IDLE;
+    return;
+  }
+  
+  bool zc = digitalRead(ZC_PIN);
+  unsigned long now = micros();
+
+  switch (triacState) {
+    case IDLE:
+      if (zc == LOW) {
+        lowStartMicros = now;
+        triacState = WAIT_DELAY;
+      }
+      break;
+
+    case WAIT_DELAY:
+      if (zc == LOW) {
+        if (now - lowStartMicros >= effectiveDelayMicros) {
+          digitalWrite(TRIAC_PIN, HIGH);
+          triacState = OUTPUT_ON;
+        }
+      } else {
+        // ZC went HIGH before delay finished -> fire immediately (high speed)
+        digitalWrite(TRIAC_PIN, HIGH);
+        triacState = OUTPUT_ON;
+      }
+      break;
+
+    case OUTPUT_ON:
+      if (zc == HIGH) {
+        digitalWrite(TRIAC_PIN, LOW);
+        triacState = IDLE;
+      }
+      break;
   }
 }
 
-// ===== JSON STATE STRING =====
+// ===== JSON STATE STRING (with clamped percentage) =====
 String getStateJSON() {
-  int percent = map(effectiveDelayMicros, MAX_DELAY, MIN_DELAY, 0, 100);
-  if (effectiveDelayMicros > MAX_DELAY) percent = 0;
+  int percent = 0;
+  if (fanEnabled) {
+    int safeDelay = constrain(effectiveDelayMicros, MIN_DELAY, MAX_DELAY);
+    percent = map(safeDelay, MAX_DELAY, MIN_DELAY, 0, 100);
+  }
   String json = "{";
   json += "\"fanEnabled\":" + String(fanEnabled ? "true" : "false") + ",";
   json += "\"light1State\":" + String(light1State ? "true" : "false") + ",";
@@ -469,8 +409,11 @@ String getStateJSON() {
 }
 
 void sendLongPollResponse(bool changed) {
-  int percent = map(effectiveDelayMicros, MAX_DELAY, MIN_DELAY, 0, 100);
-  if (effectiveDelayMicros > MAX_DELAY) percent = 0;
+  int percent = 0;
+  if (fanEnabled) {
+    int safeDelay = constrain(effectiveDelayMicros, MIN_DELAY, MAX_DELAY);
+    percent = map(safeDelay, MAX_DELAY, MIN_DELAY, 0, 100);
+  }
   String json = "{";
   json += "\"fanEnabled\":" + String(fanEnabled ? "true" : "false") + ",";
   json += "\"light1State\":" + String(light1State ? "true" : "false") + ",";
@@ -498,7 +441,7 @@ String remotePage() {
 }
 
 String webpageUnified() {
-  return "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no'><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#fff;height:100vh;width:100vw;overflow:hidden;display:flex;justify-content:center;align-items:center;padding:10px;}.container{width:100%;max-width:420px;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:5px 0;}.header{text-align:center;font-size:24px;font-weight:bold;letter-spacing:1px;color:#fff;flex:0 0 auto;}.card{background:#1e293b;border-radius:16px;padding:15px;margin:5px 0;box-shadow:0 8px 32px rgba(0,0,0,0.4);color:#fff;display:flex;flex-direction:column;justify-content:center;}.fan-card{flex:0 1 auto;min-height:200px;max-height:55vh;overflow-y:auto;}.lights-card{flex:0 0 auto;}.wifi-card{flex:0 0 auto;background:transparent;box-shadow:none;padding:0;margin:5px 0 0 0;}.card-title{font-size:16px;font-weight:600;margin-bottom:10px;color:#60a5fa;}.button-group{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0;}button{padding:12px 15px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;user-select:none;}.btn-state{background:#475569;color:#94a3b8;}.active-on{background:#22c55e !important;color:white !important;box-shadow:0 4px 12px rgba(34,197,94,0.3);}.active-off{background:#ef4444 !important;color:white !important;box-shadow:0 4px 12px rgba(239,68,68,0.2);}.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}.btn-wifi{background:#f59e0b;color:white;width:100%;padding:12px;box-shadow:0 4px 12px rgba(245,158,11,0.2);}.btn-remote{background:#8b5cf6;color:white;width:100%;padding:12px;box-shadow:0 4px 12px rgba(139,92,246,0.2);}.btn-danger{background:#ef4444;color:white;}.fan-container{display:flex;justify-content:center;align-items:center;flex:1;min-height:60px;}.fan-icon{width:80px;height:80px;fill:#475569;transition:fill 0.3s ease;}.fan-icon.spinning{animation:spin 0.8s linear infinite;fill:#22c55e;}@keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}.status{text-align:center;font-size:14px;font-weight:600;color:#60a5fa;margin:5px 0;}.slider-container{padding:10px 0;display:flex;flex-direction:column;gap:5px;}.slider-label{display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;}input[type=range]{-webkit-appearance:none;width:100%;background:transparent;}input[type=range]:focus{outline:none;}input[type=range]::-webkit-slider-runnable-track{width:100%;height:8px;cursor:pointer;background:#334155;border-radius:10px;}input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:20px;width:20px;border-radius:50%;background:#22c55e;cursor:pointer;margin-top:-6px;box-shadow:0 0 8px rgba(34,197,94,0.5);}input[type=range]:disabled::-webkit-slider-thumb{background:#475569;box-shadow:none;cursor:not-allowed;}.light-item{background:#0f172a;border-radius:12px;padding:10px 12px;margin:5px 0;border:1px solid #334155;display:flex;flex-direction:column;}.light-label{font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:5px;}.light-active{color:#22c55e !important;}.hidden{display:none !important;}</style><script>let currentSpeed=50;let isUpdatingSlider=false;let memoryEnabled=false;let wifiModeEnabled=false;async function updateState(action){try{const response=await fetch('/api/'+action);if(response.ok){const data=await response.json();updateUI(data);}}catch(e){console.error('Error:',e);}}async function handleSliderChange(val){if(isUpdatingSlider)return;isUpdatingSlider=true;let target=parseInt(val);let diff=target-currentSpeed;let steps=Math.round(Math.abs(diff)/5.5);let action=diff>0?'up':'down';document.getElementById('speedLabel').textContent=target+'%';for(let i=0;i<steps;i++){await fetch('/api/'+action);}const res=await fetch('/api/status');const data=await res.json();updateUI(data);isUpdatingSlider=false;}function updateUI(data){currentSpeed=data.fanSpeed;document.getElementById('fanStatus').textContent='Fan is '+(data.fanEnabled?'ON':'OFF');document.getElementById('light1Status').textContent='Light 1: '+(data.light1State?'ON':'OFF');document.getElementById('light2Status').textContent='Light 2: '+(data.light2State?'ON':'OFF');if(!isUpdatingSlider){document.getElementById('fanSlider').value=data.fanSpeed;document.getElementById('speedLabel').textContent=data.fanSpeed+'%';}document.getElementById('fanSlider').disabled=!data.fanEnabled;const fanIcon=document.getElementById('fanIcon');if(data.fanEnabled){fanIcon.classList.add('spinning');document.getElementById('btnFanOn').classList.add('active-on');document.getElementById('btnFanOff').classList.remove('active-off');}else{fanIcon.classList.remove('spinning');document.getElementById('btnFanOn').classList.remove('active-on');document.getElementById('btnFanOff').classList.add('active-off');}if(data.light1State){document.getElementById('light1Status').classList.add('light-active');document.getElementById('btnL1On').classList.add('active-on');document.getElementById('btnL1Off').classList.remove('active-off');}else{document.getElementById('light1Status').classList.remove('light-active');document.getElementById('btnL1On').classList.remove('active-on');document.getElementById('btnL1Off').classList.add('active-off');}if(data.light2State){document.getElementById('light2Status').classList.add('light-active');document.getElementById('btnL2On').classList.add('active-on');document.getElementById('btnL2Off').classList.remove('active-off');}else{document.getElementById('light2Status').classList.remove('light-active');document.getElementById('btnL2On').classList.remove('active-on');document.getElementById('btnL2Off').classList.add('active-off');}}async function listenForIRChanges(){while(true){try{const response=await fetch('/api/changed');if(response.ok){const data=await response.json();if(data.changed){updateUI(data);}}}catch(e){await new Promise(r=>setTimeout(r,2000));}}}async function toggleMemory(){if(memoryEnabled){await fetch('/api/memoryoff');memoryEnabled=false;}else{await fetch('/api/memoryon');memoryEnabled=true;}updateMemoryButton();}function updateMemoryButton(){const btn=document.getElementById('memBtn');if(memoryEnabled){btn.textContent='Memory: ON';btn.classList.add('active-on');btn.classList.remove('btn-state');}else{btn.textContent='Memory: OFF';btn.classList.remove('active-on');btn.classList.add('btn-state');}const btn2=document.getElementById('memBtnWifi');if(btn2){btn2.textContent='Memory: '+(memoryEnabled?'ON':'OFF');btn2.className=memoryEnabled?'btn-state active-on':'btn-state';}}async function toggleWiFiMode(){if(wifiModeEnabled){await fetch('/api/wifisafeoff');wifiModeEnabled=false;}else{await fetch('/api/wifisafeon');wifiModeEnabled=true;}updateWiFiModeButton();}function updateWiFiModeButton(){const btn=document.getElementById('wifiModeBtn');if(wifiModeEnabled){btn.textContent='WiFi Mode: ON';btn.classList.add('active-on');btn.classList.remove('btn-state');}else{btn.textContent='WiFi Mode: OFF';btn.classList.remove('active-on');btn.classList.add('btn-state');}}async function turnOffWiFiMode(){await fetch('/api/wifisafeoff');wifiModeEnabled=false;updateWiFiModeButton();}function checkConnection(){fetch('/api/hotspotstatus').then(r=>r.json()).then(data=>{if(data.wifiConnected){window.location.href='https://masumbillah987.github.io/samrt_home/';}else{document.getElementById('hotspotDashboard').classList.remove('hidden');document.getElementById('wifiDashboard').classList.add('hidden');}});}window.addEventListener('load',()=>{fetch('/api/memorystatus').then(r=>r.json()).then(d=>{memoryEnabled=d.enabled;updateMemoryButton();});fetch('/api/wifisafestatus').then(r=>r.json()).then(d=>{wifiModeEnabled=d.enabled;updateWiFiModeButton();});fetch('/api/status').then(r=>r.json()).then(d=>{updateUI(d);});listenForIRChanges();checkConnection();setInterval(checkConnection,5000);});</script></head><body><div class='container'><div class='header'>Smart Home</div><div id='hotspotDashboard'><div class='card fan-card'><div class='card-title'>Fan Control</div><div class='fan-container'><svg id='fanIcon' class='fan-icon' viewBox='0 0 100 100'><circle cx='50' cy='50' r='6' fill='white'/><path d='M50 10 Q70 30 50 50 Q30 30 50 10'/><path d='M90 50 Q70 70 50 50 Q70 30 90 50'/><path d='M50 90 Q30 70 50 50 Q70 70 50 90'/><path d='M10 50 Q30 30 50 50 Q30 70 10 50'/></svg></div><div class='status' id='fanStatus'>Fan is OFF</div><div class='button-group'><button id='btnFanOn' class='btn-state' onclick='updateState(\"on\")'>On</button><button id='btnFanOff' class='btn-state' onclick='updateState(\"off\")'>Off</button></div><div class='slider-container'><div class='slider-label'><span>Speed</span><span id='speedLabel'>50%</span></div><input type='range' id='fanSlider' min='0' max='100' value='50' onchange='handleSliderChange(this.value)'></div></div><div class='card lights-card'><div class='card-title'>Lights Control</div><div class='light-item'><div class='light-label' id='light1Status'>Light 1: OFF</div><div class='button-group'><button id='btnL1On' class='btn-state' onclick='updateState(\"l1on\")'>On</button><button id='btnL1Off' class='btn-state' onclick='updateState(\"l1off\")'>Off</button></div></div><div class='light-item'><div class='light-label' id='light2Status'>Light 2: OFF</div><div class='button-group'><button id='btnL2On' class='btn-state' onclick='updateState(\"l2on\")'>On</button><button id='btnL2Off' class='btn-state' onclick='updateState(\"l2off\")'>Off</button></div></div></div><div class='card' style='padding:10px; margin-top:5px;'><div class='card-title'>Quick Settings</div><div class='button-group'><button id='memBtn' class='btn-state' onclick='toggleMemory()'>Memory: OFF</button><button id='wifiModeBtn' class='btn-state' onclick='toggleWiFiMode()'>WiFi Mode: OFF</button></div></div></div><div id='wifiDashboard' class='hidden'><div class='card' style='text-align:center;'><div class='card-title'>Connected to WiFi</div><div class='status' style='color:#a3e635;'>WiFi Mode is ON</div><button id='memBtnWifi' class='btn-state' onclick='toggleMemory()'>Memory: OFF</button><button class='btn-wifi' onclick=\"location.href='/wifi'\">WiFi Setup</button><button class='btn-remote' onclick=\"location.href='/remote'\">Remote Setup</button><button class='btn-danger' onclick='turnOffWiFiMode()'>Turn Off WiFi Mode</button></div></div><div class='card wifi-card'><div class='btn-row'><button class='btn-wifi' onclick=\"location.href='/wifi'\">WiFi Setup</button><button class='btn-remote' onclick=\"location.href='/remote'\">Remote Setup</button></div></div></div></body></html>";
+  return "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no'><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#fff;height:100vh;width:100vw;overflow:hidden;display:flex;justify-content:center;align-items:center;padding:10px;}.container{width:100%;max-width:420px;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:5px 0;}.header{text-align:center;font-size:24px;font-weight:bold;letter-spacing:1px;color:#fff;flex:0 0 auto;}.card{background:#1e293b;border-radius:16px;padding:15px;margin:5px 0;box-shadow:0 8px 32px rgba(0,0,0,0.4);color:#fff;display:flex;flex-direction:column;justify-content:center;}.fan-card{flex:0 1 auto;min-height:200px;max-height:55vh;overflow-y:auto;}.lights-card{flex:0 0 auto;}.wifi-card{flex:0 0 auto;background:transparent;box-shadow:none;padding:0;margin:5px 0 0 0;}.card-title{font-size:16px;font-weight:600;margin-bottom:10px;color:#60a5fa;}.button-group{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0;}button{padding:12px 15px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;user-select:none;}.btn-state{background:#475569;color:#94a3b8;}.active-on{background:#22c55e !important;color:white !important;box-shadow:0 4px 12px rgba(34,197,94,0.3);}.active-off{background:#ef4444 !important;color:white !important;box-shadow:0 4px 12px rgba(239,68,68,0.2);}.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}.btn-wifi{background:#f59e0b;color:white;width:100%;padding:12px;box-shadow:0 4px 12px rgba(245,158,11,0.2);}.btn-remote{background:#8b5cf6;color:white;width:100%;padding:12px;box-shadow:0 4px 12px rgba(139,92,246,0.2);}.btn-danger{background:#ef4444;color:white;}.fan-container{display:flex;justify-content:center;align-items:center;flex:1;min-height:60px;}.fan-icon{width:80px;height:80px;fill:#475569;transition:fill 0.3s ease;}.fan-icon.spinning{animation:spin 0.8s linear infinite;fill:#22c55e;}@keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}.status{text-align:center;font-size:14px;font-weight:600;color:#60a5fa;margin:5px 0;}.slider-container{padding:10px 0;display:flex;flex-direction:column;gap:5px;}.slider-label{display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;}input[type=range]{-webkit-appearance:none;width:100%;background:transparent;}input[type=range]:focus{outline:none;}input[type=range]::-webkit-slider-runnable-track{width:100%;height:8px;cursor:pointer;background:#334155;border-radius:10px;}input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:20px;width:20px;border-radius:50%;background:#22c55e;cursor:pointer;margin-top:-6px;box-shadow:0 0 8px rgba(34,197,94,0.5);}input[type=range]:disabled::-webkit-slider-thumb{background:#475569;box-shadow:none;cursor:not-allowed;}.light-item{background:#0f172a;border-radius:12px;padding:10px 12px;margin:5px 0;border:1px solid #334155;display:flex;flex-direction:column;}.light-label{font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:5px;}.light-active{color:#22c55e !important;}.hidden{display:none !important;}</style><script>let currentSpeed=50;let isUpdatingSlider=false;let memoryEnabled=false;let wifiModeEnabled=false;async function updateState(action){try{const response=await fetch('/api/'+action);if(response.ok){const data=await response.json();updateUI(data);}}catch(e){console.error('Error:',e);}}async function handleSliderChange(val){if(isUpdatingSlider)return;isUpdatingSlider=true;let target=parseInt(val);document.getElementById('speedLabel').textContent=target+'%';try{const response=await fetch('/api/speed?value='+target);if(response.ok){const data=await response.json();updateUI(data);}}catch(e){console.error('Error:',e);}isUpdatingSlider=false;}function updateUI(data){currentSpeed=data.fanSpeed;document.getElementById('fanStatus').textContent='Fan is '+(data.fanEnabled?'ON':'OFF');document.getElementById('light1Status').textContent='Light 1: '+(data.light1State?'ON':'OFF');document.getElementById('light2Status').textContent='Light 2: '+(data.light2State?'ON':'OFF');if(!isUpdatingSlider){document.getElementById('fanSlider').value=data.fanSpeed;document.getElementById('speedLabel').textContent=data.fanSpeed+'%';}document.getElementById('fanSlider').disabled=!data.fanEnabled;const fanIcon=document.getElementById('fanIcon');if(data.fanEnabled){fanIcon.classList.add('spinning');document.getElementById('btnFanOn').classList.add('active-on');document.getElementById('btnFanOff').classList.remove('active-off');}else{fanIcon.classList.remove('spinning');document.getElementById('btnFanOn').classList.remove('active-on');document.getElementById('btnFanOff').classList.add('active-off');}if(data.light1State){document.getElementById('light1Status').classList.add('light-active');document.getElementById('btnL1On').classList.add('active-on');document.getElementById('btnL1Off').classList.remove('active-off');}else{document.getElementById('light1Status').classList.remove('light-active');document.getElementById('btnL1On').classList.remove('active-on');document.getElementById('btnL1Off').classList.add('active-off');}if(data.light2State){document.getElementById('light2Status').classList.add('light-active');document.getElementById('btnL2On').classList.add('active-on');document.getElementById('btnL2Off').classList.remove('active-off');}else{document.getElementById('light2Status').classList.remove('light-active');document.getElementById('btnL2On').classList.remove('active-on');document.getElementById('btnL2Off').classList.add('active-off');}}async function listenForIRChanges(){while(true){try{const response=await fetch('/api/changed');if(response.ok){const data=await response.json();if(data.changed){updateUI(data);}}}catch(e){await new Promise(r=>setTimeout(r,2000));}}}async function toggleMemory(){if(memoryEnabled){await fetch('/api/memoryoff');memoryEnabled=false;}else{await fetch('/api/memoryon');memoryEnabled=true;}updateMemoryButton();}function updateMemoryButton(){const btn=document.getElementById('memBtn');if(memoryEnabled){btn.textContent='Memory: ON';btn.classList.add('active-on');btn.classList.remove('btn-state');}else{btn.textContent='Memory: OFF';btn.classList.remove('active-on');btn.classList.add('btn-state');}const btn2=document.getElementById('memBtnWifi');if(btn2){btn2.textContent='Memory: '+(memoryEnabled?'ON':'OFF');btn2.className=memoryEnabled?'btn-state active-on':'btn-state';}}async function toggleWiFiMode(){if(wifiModeEnabled){await fetch('/api/wifisafeoff');wifiModeEnabled=false;}else{await fetch('/api/wifisafeon');wifiModeEnabled=true;}updateWiFiModeButton();}function updateWiFiModeButton(){const btn=document.getElementById('wifiModeBtn');if(wifiModeEnabled){btn.textContent='WiFi Mode: ON';btn.classList.add('active-on');btn.classList.remove('btn-state');}else{btn.textContent='WiFi Mode: OFF';btn.classList.remove('active-on');btn.classList.add('btn-state');}}async function turnOffWiFiMode(){await fetch('/api/wifisafeoff');wifiModeEnabled=false;updateWiFiModeButton();}function checkConnection(){fetch('/api/hotspotstatus').then(r=>r.json()).then(data=>{if(data.wifiConnected){window.location.href='https://masumbillah987.github.io/samrt_home/';}else{document.getElementById('hotspotDashboard').classList.remove('hidden');document.getElementById('wifiDashboard').classList.add('hidden');}});}window.addEventListener('load',()=>{fetch('/api/memorystatus').then(r=>r.json()).then(d=>{memoryEnabled=d.enabled;updateMemoryButton();});fetch('/api/wifisafestatus').then(r=>r.json()).then(d=>{wifiModeEnabled=d.enabled;updateWiFiModeButton();});fetch('/api/status').then(r=>r.json()).then(d=>{updateUI(d);});listenForIRChanges();checkConnection();setInterval(checkConnection,5000);});</script></head><body><div class='container'><div class='header'>Smart Home</div><div id='hotspotDashboard'><div class='card fan-card'><div class='card-title'>Fan Control</div><div class='fan-container'><svg id='fanIcon' class='fan-icon' viewBox='0 0 100 100'><circle cx='50' cy='50' r='6' fill='white'/><path d='M50 10 Q70 30 50 50 Q30 30 50 10'/><path d='M90 50 Q70 70 50 50 Q70 30 90 50'/><path d='M50 90 Q30 70 50 50 Q70 70 50 90'/><path d='M10 50 Q30 30 50 50 Q30 70 10 50'/></svg></div><div class='status' id='fanStatus'>Fan is OFF</div><div class='button-group'><button id='btnFanOn' class='btn-state' onclick='updateState(\"on\")'>On</button><button id='btnFanOff' class='btn-state' onclick='updateState(\"off\")'>Off</button></div><div class='slider-container'><div class='slider-label'><span>Speed</span><span id='speedLabel'>50%</span></div><input type='range' id='fanSlider' min='0' max='100' value='50' oninput='handleSliderChange(this.value)'></div></div><div class='card lights-card'><div class='card-title'>Lights Control</div><div class='light-item'><div class='light-label' id='light1Status'>Light 1: OFF</div><div class='button-group'><button id='btnL1On' class='btn-state' onclick='updateState(\"l1on\")'>On</button><button id='btnL1Off' class='btn-state' onclick='updateState(\"l1off\")'>Off</button></div></div><div class='light-item'><div class='light-label' id='light2Status'>Light 2: OFF</div><div class='button-group'><button id='btnL2On' class='btn-state' onclick='updateState(\"l2on\")'>On</button><button id='btnL2Off' class='btn-state' onclick='updateState(\"l2off\")'>Off</button></div></div></div><div class='card' style='padding:10px; margin-top:5px;'><div class='card-title'>Quick Settings</div><div class='button-group'><button id='memBtn' class='btn-state' onclick='toggleMemory()'>Memory: OFF</button><button id='wifiModeBtn' class='btn-state' onclick='toggleWiFiMode()'>WiFi Mode: OFF</button></div></div></div><div id='wifiDashboard' class='hidden'><div class='card' style='text-align:center;'><div class='card-title'>Connected to WiFi</div><div class='status' style='color:#a3e635;'>WiFi Mode is ON</div><button id='memBtnWifi' class='btn-state' onclick='toggleMemory()'>Memory: OFF</button><button class='btn-wifi' onclick=\"location.href='/wifi'\">WiFi Setup</button><button class='btn-remote' onclick=\"location.href='/remote'\">Remote Setup</button><button class='btn-danger' onclick='turnOffWiFiMode()'>Turn Off WiFi Mode</button></div></div><div class='card wifi-card'><div class='btn-row'><button class='btn-wifi' onclick=\"location.href='/wifi'\">WiFi Setup</button><button class='btn-remote' onclick=\"location.href='/remote'\">Remote Setup</button></div></div></div></body></html>";
 }
 
 // ===== ROUTES =====
@@ -523,10 +466,38 @@ void apiChanged() {
     longPollStartTime = millis();
   }
 }
-void apiOn() { fanEnabled = true; triggerStateStorage(); publishMqttStatus(); updateEffectiveDelay(); server.send(200, "application/json", getStateJSON()); }
-void apiOff() { fanEnabled = false; triggerStateStorage(); publishMqttStatus(); updateEffectiveDelay(); server.send(200, "application/json", getStateJSON()); }
-void apiSpeedUp() { if (delayMicros > MIN_DELAY) delayMicros -= 500; triggerStateStorage(); publishMqttStatus(); updateEffectiveDelay(); server.send(200, "application/json", getStateJSON()); }
-void apiSpeedDown() { if (delayMicros < MAX_DELAY) delayMicros += 500; triggerStateStorage(); publishMqttStatus(); updateEffectiveDelay(); server.send(200, "application/json", getStateJSON()); }
+void apiOn() { fanEnabled = true; updateEffectiveDelay(); triggerStateStorage(); publishMqttStatus(); server.send(200, "application/json", getStateJSON()); }
+void apiOff() { fanEnabled = false; updateEffectiveDelay(); triggerStateStorage(); publishMqttStatus(); server.send(200, "application/json", getStateJSON()); }
+void apiSetSpeed() {
+  if (server.hasArg("value")) {
+    int targetPercent = server.arg("value").toInt();
+    targetPercent = constrain(targetPercent, 0, 100);
+    delayMicros = map(targetPercent, 0, 100, MAX_DELAY, MIN_DELAY);
+    clampDelayMicros();    // ensure within bounds
+    updateEffectiveDelay();
+    triggerStateStorage();
+    publishMqttStatus();
+    server.send(200, "application/json", getStateJSON());
+  } else {
+    server.send(400, "application/json", "{\"error\":\"Missing value\"}");
+  }
+}
+void apiSpeedUp() {
+  if (delayMicros > MIN_DELAY) delayMicros -= 500;
+  clampDelayMicros();
+  updateEffectiveDelay();
+  triggerStateStorage();
+  publishMqttStatus();
+  server.send(200, "application/json", getStateJSON());
+}
+void apiSpeedDown() {
+  if (delayMicros < MAX_DELAY) delayMicros += 500;
+  clampDelayMicros();
+  updateEffectiveDelay();
+  triggerStateStorage();
+  publishMqttStatus();
+  server.send(200, "application/json", getStateJSON());
+}
 void apiL1On() { light1State = true; digitalWrite(LIGHT1_PIN, HIGH); triggerStateStorage(); publishMqttStatus(); server.send(200, "application/json", getStateJSON()); }
 void apiL1Off() { light1State = false; digitalWrite(LIGHT1_PIN, LOW); triggerStateStorage(); publishMqttStatus(); server.send(200, "application/json", getStateJSON()); }
 void apiL2On() { light2State = true; digitalWrite(LIGHT2_PIN, HIGH); triggerStateStorage(); publishMqttStatus(); server.send(200, "application/json", getStateJSON()); }
@@ -543,6 +514,7 @@ void handleWiFiSafeStatus() { String json = "{\"enabled\":" + String(wifiSafeEna
 void handleHotspotOn() { if (!apEnabled) { WiFi.softAP(ap_ssid, ap_pass); apEnabled = true; } server.send(200, "application/json", "{\"success\":true}"); }
 void handleHotspotOff() { if (apEnabled) { WiFi.softAPdisconnect(true); apEnabled = false; } server.send(200, "application/json", "{\"success\":true}"); }
 void handleHotspotStatus() { String json = "{\"enabled\":" + String(apEnabled ? "true" : "false") + ",\"wifiConnected\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false") + "}"; server.send(200, "application/json", json); }
+
 void masterReset() {
   for (int i = 0; i < sizeof(StateData); i++) EEPROM.write(STATE_DATA_ADDR + i, 0);
   for (int i = 0; i < sizeof(IRConfigData); i++) EEPROM.write(IR_CONFIG_ADDR + i, 0);
@@ -551,10 +523,11 @@ void masterReset() {
   EEPROM.write(WIFI_SAFE_ADDR, 0);
   EEPROM.commit();
   server.send(200, "text/plain", "Resetting...");
-  delay(500);
-  ESP.restart();
+  resetPending = true;
+  resetStartTime = millis();
 }
 void handleMasterReset() { masterReset(); }
+
 void save() {
   String s = server.arg("s");
   String p = server.arg("p");
@@ -602,6 +575,7 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
   if (cmd.startsWith("SPEED_")) {
     int val = cmd.substring(6).toInt();
     delayMicros = map(val, 0, 100, MAX_DELAY, MIN_DELAY);
+    clampDelayMicros();
     changed = true;
   } else if (cmd == "FAN_ON") {
     fanEnabled = true;
@@ -611,9 +585,11 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
     changed = true;
   } else if (cmd == "FAN_UP") {
     if (delayMicros > MIN_DELAY) delayMicros -= 500;
+    clampDelayMicros();
     changed = true;
   } else if (cmd == "FAN_DOWN") {
     if (delayMicros < MAX_DELAY) delayMicros += 500;
+    clampDelayMicros();
     changed = true;
   } else if (cmd == "L1_ON") {
     light1State = true;
@@ -636,10 +612,10 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
     changed = false;
   }
   if (changed) {
+    updateEffectiveDelay();
     triggerStateStorage();
     stateChangedByIR = true;
     publishMqttStatus();
-    updateEffectiveDelay();
   }
 }
 void connectToMqtt() {
@@ -665,10 +641,12 @@ void handleIR() {
   bool targetHit = false;
   if (code == irConfig.speedDown && delayMicros > MIN_DELAY) {
     delayMicros -= 500;
+    clampDelayMicros();
     targetHit = true;
     Serial.println("[IR] Speed Down");
   } else if (code == irConfig.speedUp && delayMicros < MAX_DELAY) {
     delayMicros += 500;
+    clampDelayMicros();
     targetHit = true;
     Serial.println("[IR] Speed Up");
   } else if (code == irConfig.fanToggle) {
@@ -687,10 +665,10 @@ void handleIR() {
     Serial.println("[IR] Light 2 Toggle");
   }
   if (targetHit) {
+    updateEffectiveDelay();
     triggerStateStorage();
     stateChangedByIR = true;
     publishMqttStatus();
-    updateEffectiveDelay();
   }
 }
 
@@ -717,6 +695,7 @@ void setup() {
   pinMode(LIGHT2_PIN, OUTPUT);
   digitalWrite(LIGHT1_PIN, LOW);
   digitalWrite(LIGHT2_PIN, LOW);
+  digitalWrite(TRIAC_PIN, LOW);  // Ensure triac starts OFF
   attachInterrupt(digitalPinToInterrupt(ZC_PIN), zcISR, CHANGE);
   irrecv.enableIRIn();
   loadWiFi();
@@ -726,6 +705,7 @@ void setup() {
   loadWiFiSafe();
   startWiFi();
   applySavedStates();
+  updateEffectiveDelay();  // Initialize effective delay
   MDNS.begin("smarthome");
   MDNS.addService("http", "tcp", 80);
   mqttClient.onConnect(onMqttConnect);
@@ -736,6 +716,7 @@ void setup() {
   server.on("/api/changed", apiChanged);
   server.on("/api/on", apiOn);
   server.on("/api/off", apiOff);
+  server.on("/api/speed", apiSetSpeed);
   server.on("/api/up", apiSpeedUp);
   server.on("/api/down", apiSpeedDown);
   server.on("/api/l1on", apiL1On);
@@ -763,8 +744,13 @@ void setup() {
 
 void loop() {
   unsigned long currentMillis = millis();
-  handleTriac();
-  updateMaxSpeedFromDuty();
+
+  // Non‑blocking reset handling
+  if (resetPending && (currentMillis - resetStartTime >= RESET_DELAY_MS)) {
+    ESP.restart();
+  }
+
+  handleTriacStateMachine();
 
   if (currentMillis - lastIRCheckTime >= IR_CHECK_INTERVAL) {
     lastIRCheckTime = currentMillis;
@@ -772,9 +758,10 @@ void loop() {
   }
   commitStateIfPending();
 
+  // Power‑loss detection (save state if zero‑cross stays low for >30ms)
   if (memorySaveEnabled && stateDirty) {
     unsigned long now = micros();
-    if (now - lastZCTime > 30000) {
+    if (now - lowStartMicros > 30000) {
       saveStateToEEPROM();
       stateDirty = false;
     }
