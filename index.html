@@ -125,18 +125,6 @@
             transform: scale(0.96);
         }
 
-        /* Settings button style (replaces status-btn) */
-        .settings-btn {
-            background: rgba(56, 189, 248, 0.2);
-            border: 1px solid rgba(56, 189, 248, 0.4);
-            backdrop-filter: blur(8px);
-        }
-        
-        .settings-btn:hover {
-            background: rgba(56, 189, 248, 0.35);
-            box-shadow: 0 0 10px rgba(56, 189, 248, 0.2);
-        }
-
         .login-header-btn {
             background: rgba(245, 158, 11, 0.9);
         }
@@ -487,8 +475,7 @@
                 <div class="pro-badge">pro</div>
             </div>
             <div class="action-buttons">
-                <!-- Settings button: navigates to smarthome.local/settings -->
-                <button class="icon-btn settings-btn" id="settingsBtn">⚙️ Settings</button>
+                <!-- Settings button removed as requested -->
                 <button class="icon-btn login-header-btn" id="showLoginBtn"> Login</button>
             </div>
         </div>
@@ -578,7 +565,6 @@
 
     // DOM elements
     const showLoginBtn = document.getElementById('showLoginBtn');
-    const settingsBtn = document.getElementById('settingsBtn');
     const loginModal = document.getElementById('loginModal');
     const modalUserId = document.getElementById('modalUserId');
     const modalPassword = document.getElementById('modalPassword');
@@ -651,7 +637,7 @@
         }
     }
 
-    // Enable/disable control buttons (except Settings button which stays active)
+    // Enable/disable control buttons
     function enableControls(enabled) {
         const btns = [fanOnBtn, fanOffBtn, light1On, light1Off, light2On, light2Off];
         btns.forEach(btn => { if(btn) btn.disabled = !enabled; });
@@ -864,15 +850,6 @@
         fanSlider.oninput = (e) => { document.getElementById('speedPercent').innerText = e.target.value + '%'; };
     }
 
-    // Settings navigation: redirect to smarthome.local/settings
-    function setupSettingsNavigation() {
-        if (settingsBtn) {
-            settingsBtn.onclick = () => {
-                window.location.href = "smarthome.local/settings";
-            };
-        }
-    }
-
     // Modal and UI init
     showLoginBtn.onclick = () => { loginModal.classList.add('active'); };
     cancelLoginBtn.onclick = () => { loginModal.classList.remove('active'); };
@@ -882,7 +859,6 @@
     // Initialization
     window.addEventListener('load', () => {
         attachControlEvents();
-        setupSettingsNavigation();    // Overrides settings button navigation
         loadDeviceState();
         updateDashboardUI();
         attemptAutoLogin();
