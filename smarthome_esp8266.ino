@@ -22,7 +22,7 @@
 #define IR_CONFIG_ADDR 128
 #define MQTT_CONFIG_ADDR 200
 #define WIFI_SAFE_ADDR 500
-#define MEMORY_SAVE_ADDR 501        // persistent flag for Memory Save feature
+#define MEMORY_SAVE_ADDR 501
 
 char wifi_ssid[32];
 char wifi_pass[32];
@@ -60,7 +60,6 @@ struct IRConfigData {
 // ===== HOTSPOT =====
 const char* ap_ssid = "Smart Home";
 const char* ap_pass = "12345678";
-bool apEnabled = true;
 
 // ===== PINS =====
 #define ZC_PIN D1
@@ -68,6 +67,14 @@ bool apEnabled = true;
 #define IR_PIN D5
 #define LIGHT1_PIN D2
 #define LIGHT2_PIN D8
+
+// ===== বাটন পিন (ইনপুট, ইন্টার্নাল পুল-আপ) =====
+// আপনার টেস্টিং কোড অনুযায়ী পিন ডিফাইন
+#define BTN_FAN_ON D7       // ফ্যান চালু/বন্ধ টগল
+#define BTN_SPEED_UP D3     // গতি বাড়ান
+#define BTN_SPEED_DOWN D4   // গতি কমান
+#define BTN_LIGHT1 3        // লাইট ১ টগল (RX)
+#define BTN_LIGHT2 1        // লাইট ২ টগল (TX)
 
 // ===== SPEED =====
 volatile int delayMicros = 5000;
@@ -114,6 +121,8 @@ unsigned long lastIRCheckTime = 0;
 const unsigned long IR_CHECK_INTERVAL = 50;
 unsigned long lastMDNSUpdateTime = 0;
 const unsigned long MDNS_UPDATE_INTERVAL = 1000;
+unsigned long lastButtonCheckTime = 0;
+const unsigned long BUTTON_CHECK_INTERVAL = 20;
 
 // ===== MEMORY SAVE FEATURE =====
 bool memorySaveEnabled = false;
@@ -122,12 +131,20 @@ bool stateDirty = false;
 // ===== WIFI MODE FEATURE =====
 bool wifiSafeEnabled = false;
 unsigned long wifiConnectStartTime = 0;
-const unsigned long WIFI_TIMEOUT = 100000;
 
 // ===== NON-BLOCKING RESET =====
 bool resetPending = false;
 unsigned long resetStartTime = 0;
 const unsigned long RESET_DELAY_MS = 500;
+
+// ===== বাটন স্টেট ট্র্যাকিং - সহজ পদ্ধতি =====
+bool lastBtnFanOn = HIGH;
+bool lastBtnSpeedUp = HIGH;
+bool lastBtnSpeedDown = HIGH;
+bool lastBtnLight1 = HIGH;
+bool lastBtnLight2 = HIGH;
+unsigned long lastDebounceTime = 0;
+const unsigned long DEBOUNCE_DELAY = 50;
 
 // ===== CLAMP FUNCTION =====
 void clampDelayMicros() {
@@ -198,10 +215,8 @@ void loadMQTTConfig() {
       EEPROM.write(MQTT_CONFIG_ADDR + i, ((byte*)&mqttConfig)[i]);
     }
     EEPROM.commit();
-    Serial.println("[MQTT] Default config written");
   }
 }
-
 
 void loadState() {
   for (int i = 0; i < sizeof(StateData); i++) {
@@ -209,7 +224,6 @@ void loadState() {
   }
   uint32_t calc = calculateChecksum(stateData);
   
-  // Only load saved states if Memory Save is enabled AND checksum is valid
   if (memorySaveEnabled && calc == stateData.checksum) {
     delayMicros = stateData.delayMicros;
     clampDelayMicros();
@@ -217,16 +231,13 @@ void loadState() {
     fanEnabled = stateData.fanEnabled;
     light1State = stateData.light1State;
     light2State = stateData.light2State;
-    Serial.println("[EEPROM] State Loaded (Memory Save ON)");
   } else {
-    // Force all outputs OFF when Memory Save is disabled
-    delayMicros = 5000;  // default speed (50%)
+    delayMicros = 5000;
     clampDelayMicros();
     effectiveDelayMicros = delayMicros;
     fanEnabled = false;
     light1State = false;
     light2State = false;
-    Serial.println("[EEPROM] State NOT loaded (Memory Save OFF) - All outputs OFF");
   }
 }
 
@@ -256,7 +267,6 @@ void commitStateIfPending() {
     if (changed) {
       EEPROM.commit();
       memcpy(&stateData, &newData, sizeof(StateData));
-      Serial.println("[PRO-SAVED] State safely written");
     }
   }
 }
@@ -273,7 +283,6 @@ void saveStateToEEPROM() {
   }
   EEPROM.commit();
   memcpy(&stateData, &newData, sizeof(StateData));
-  Serial.println("[POWER-LOSS] State saved to EEPROM");
 }
 
 void loadIRConfig() {
@@ -288,7 +297,6 @@ void loadIRConfig() {
     irConfig.light1Toggle = 0x807F728D;
     irConfig.light2Toggle = 0x807FB04F;
     saveIRConfig();
-    Serial.println("[IR] Using default codes");
   }
 }
 
@@ -305,7 +313,6 @@ void saveIRConfig() {
   }
   if (changed) {
     EEPROM.commit();
-    Serial.println("[SAVED] IR Config");
   }
 }
 
@@ -334,7 +341,6 @@ void saveWiFi(String ssid, String pass) {
 void loadWiFiSafe() {
   byte val = EEPROM.read(WIFI_SAFE_ADDR);
   wifiSafeEnabled = (val == 1);
-  // Don't connect here - will connect after startWiFi() in setup
 }
 
 void saveWiFiSafeToEEPROM() {
@@ -345,12 +351,9 @@ void saveWiFiSafeToEEPROM() {
   }
 }
 
-// ===== PERSISTENT MEMORY SAVE FLAG =====
 void loadMemorySave() {
   byte val = EEPROM.read(MEMORY_SAVE_ADDR);
   memorySaveEnabled = (val == 1);
-  Serial.print("[EEPROM] Memory Save flag loaded: ");
-  Serial.println(memorySaveEnabled ? "ON" : "OFF");
 }
 
 void saveMemorySaveToEEPROM() {
@@ -358,8 +361,6 @@ void saveMemorySaveToEEPROM() {
   if (EEPROM.read(MEMORY_SAVE_ADDR) != val) {
     EEPROM.write(MEMORY_SAVE_ADDR, val);
     EEPROM.commit();
-    Serial.print("[EEPROM] Memory Save flag saved: ");
-    Serial.println(memorySaveEnabled ? "ON" : "OFF");
   }
 }
 
@@ -452,6 +453,79 @@ void publishMqttStatus() {
   }
 }
 
+// ===== বাটন হ্যান্ডলিং - সহজ পদ্ধতি =====
+void handleButtons() {
+  // বর্তমান বাটন স্টেট পড়া (LOW = চাপা হয়েছে কারণ INPUT_PULLUP)
+  bool readingFanOn = digitalRead(BTN_FAN_ON);
+  bool readingSpeedUp = digitalRead(BTN_SPEED_UP);
+  bool readingSpeedDown = digitalRead(BTN_SPEED_DOWN);
+  bool readingLight1 = digitalRead(BTN_LIGHT1);
+  bool readingLight2 = digitalRead(BTN_LIGHT2);
+
+  // ডিবাউন্স চেক
+  if (millis() - lastDebounceTime > DEBOUNCE_DELAY) {
+    
+    // --- D7: ফ্যান চালু/বন্ধ টগল ---
+    if (readingFanOn == LOW && lastBtnFanOn == HIGH) {
+      fanEnabled = !fanEnabled;
+      updateEffectiveDelay();
+      triggerStateStorage();
+      stateChangedByIR = true;
+      publishMqttStatus();
+    }
+
+    // --- D3: গতি বাড়ান ---
+    if (readingSpeedUp == LOW && lastBtnSpeedUp == HIGH) {
+      if (fanEnabled && delayMicros > MIN_DELAY) {
+        delayMicros -= 500;
+        clampDelayMicros();
+        updateEffectiveDelay();
+        triggerStateStorage();
+        stateChangedByIR = true;
+        publishMqttStatus();
+      }
+    }
+
+    // --- D4: গতি কমান ---
+    if (readingSpeedDown == LOW && lastBtnSpeedDown == HIGH) {
+      if (fanEnabled && delayMicros < MAX_DELAY) {
+        delayMicros += 500;
+        clampDelayMicros();
+        updateEffectiveDelay();
+        triggerStateStorage();
+        stateChangedByIR = true;
+        publishMqttStatus();
+      }
+    }
+
+    // --- RX (GPIO3): লাইট ১ টগল ---
+    if (readingLight1 == LOW && lastBtnLight1 == HIGH) {
+      light1State = !light1State;
+      digitalWrite(LIGHT1_PIN, light1State ? HIGH : LOW);
+      triggerStateStorage();
+      stateChangedByIR = true;
+      publishMqttStatus();
+    }
+
+    // --- TX (GPIO1): লাইট ২ টগল ---
+    if (readingLight2 == LOW && lastBtnLight2 == HIGH) {
+      light2State = !light2State;
+      digitalWrite(LIGHT2_PIN, light2State ? HIGH : LOW);
+      triggerStateStorage();
+      stateChangedByIR = true;
+      publishMqttStatus();
+    }
+
+    // সর্বশেষ স্টেট সংরক্ষণ
+    lastBtnFanOn = readingFanOn;
+    lastBtnSpeedUp = readingSpeedUp;
+    lastBtnSpeedDown = readingSpeedDown;
+    lastBtnLight1 = readingLight1;
+    lastBtnLight2 = readingLight2;
+    lastDebounceTime = millis();
+  }
+}
+
 // ===== WEB PAGES =====
 String wifiPage() {
   return "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1'><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#fff;height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}.card{background:#1e293b;border-radius:18px;padding:30px;width:100%;max-width:360px;box-shadow:0 8px 32px rgba(0,0,0,0.4);}.title{font-size:24px;font-weight:bold;text-align:center;margin-bottom:20px;color:#60a5fa;}input{width:100%;padding:12px;margin:10px 0;border:2px solid #334155;background:#0f172a;border-radius:10px;color:#fff;}input:focus{outline:none;border-color:#60a5fa;}label{display:block;font-weight:600;margin-top:10px;}button{width:100%;padding:12px;background:#f59e0b;color:white;border:none;border-radius:10px;margin-top:20px;cursor:pointer;}.back-btn{background:#475569;margin-top:10px;}</style></head><body><div class='card'><div class='title'>WiFi Settings</div><form action='/save'><label>SSID</label><input type='text' name='s' placeholder='Network name' required><label>Password</label><input type='password' name='p' placeholder='Password' required><button type='submit'>Save</button></form><button class='back-btn' onclick=\"location.href='/'\">Back</button></div></body></html>";
@@ -467,7 +541,6 @@ String settingsPage() {
 
 String webpageMain() {
   if (mqttConnected) {
-    // Redirect to settings page immediately
     return "<!DOCTYPE html><html><head><meta http-equiv='refresh' content='0;url=/settings'><script>window.location.replace('/settings');</script></head><body>Loading settings...</body></html>";
   } else {
     return "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no'><style>*{margin:0;padding:0;box-sizing:border-box;}body{background:#0f172a;font-family:'Segoe UI',Arial,sans-serif;color:#fff;height:100vh;width:100vw;overflow:hidden;display:flex;justify-content:center;align-items:center;padding:10px;}.container{width:100%;max-width:420px;height:100%;display:flex;flex-direction:column;justify-content:space-between;padding:5px 0;}.header{text-align:center;font-size:24px;font-weight:bold;letter-spacing:1px;color:#fff;flex:0 0 auto;}.card{background:#1e293b;border-radius:16px;padding:15px;margin:5px 0;box-shadow:0 8px 32px rgba(0,0,0,0.4);color:#fff;display:flex;flex-direction:column;justify-content:center;}.fan-card{flex:0 1 auto;min-height:200px;max-height:55vh;overflow-y:auto;}.lights-card{flex:0 0 auto;}.wifi-card{flex:0 0 auto;background:transparent;box-shadow:none;padding:0;margin:5px 0 0 0;}.card-title{font-size:16px;font-weight:600;margin-bottom:10px;color:#60a5fa;}.button-group{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:8px 0;}button{padding:12px 15px;border:none;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;text-transform:uppercase;letter-spacing:0.5px;user-select:none;}.btn-state{background:#475569;color:#94a3b8;}.active-on{background:#22c55e !important;color:white !important;box-shadow:0 4px 12px rgba(34,197,94,0.3);}.active-off{background:#ef4444 !important;color:white !important;box-shadow:0 4px 12px rgba(239,68,68,0.2);}.btn-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;}.btn-wifi{background:#f59e0b;color:white;width:100%;padding:12px;box-shadow:0 4px 12px rgba(245,158,11,0.2);}.btn-remote{background:#8b5cf6;color:white;width:100%;padding:12px;box-shadow:0 4px 12px rgba(139,92,246,0.2);}.fan-container{display:flex;justify-content:center;align-items:center;flex:1;min-height:60px;}.fan-icon{width:80px;height:80px;fill:#475569;transition:fill 0.3s ease;}.fan-icon.spinning{animation:spin 0.8s linear infinite;fill:#22c55e;}@keyframes spin{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}.status{text-align:center;font-size:14px;font-weight:600;color:#60a5fa;margin:5px 0;}.slider-container{padding:10px 0;display:flex;flex-direction:column;gap:5px;}.slider-label{display:flex;justify-content:space-between;font-size:12px;color:#94a3b8;}input[type=range]{-webkit-appearance:none;width:100%;background:transparent;}input[type=range]:focus{outline:none;}input[type=range]::-webkit-slider-runnable-track{width:100%;height:8px;cursor:pointer;background:#334155;border-radius:10px;}input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:20px;width:20px;border-radius:50%;background:#22c55e;cursor:pointer;margin-top:-6px;box-shadow:0 0 8px rgba(34,197,94,0.5);}input[type=range]:disabled::-webkit-slider-thumb{background:#475569;box-shadow:none;cursor:not-allowed;}.light-item{background:#0f172a;border-radius:12px;padding:10px 12px;margin:5px 0;border:1px solid #334155;display:flex;flex-direction:column;}.light-label{font-size:14px;font-weight:600;color:#e2e8f0;margin-bottom:5px;}.light-active{color:#22c55e !important;}</style><script>let currentSpeed=50;let isUpdatingSlider=false;let memoryEnabled=false;let wifiModeEnabled=false;async function updateState(action){try{const response=await fetch('/api/'+action);if(response.ok){const data=await response.json();updateUI(data);}}catch(e){console.error('Error:',e);}}async function handleSliderChange(val){if(isUpdatingSlider)return;isUpdatingSlider=true;let target=parseInt(val);document.getElementById('speedLabel').textContent=target+'%';try{const response=await fetch('/api/speed?value='+target);if(response.ok){const data=await response.json();updateUI(data);}}catch(e){console.error('Error:',e);}isUpdatingSlider=false;}function updateUI(data){currentSpeed=data.fanSpeed;document.getElementById('fanStatus').textContent='Fan is '+(data.fanEnabled?'ON':'OFF');document.getElementById('light1Status').textContent='Light 1: '+(data.light1State?'ON':'OFF');document.getElementById('light2Status').textContent='Light 2: '+(data.light2State?'ON':'OFF');if(!isUpdatingSlider){document.getElementById('fanSlider').value=data.fanSpeed;document.getElementById('speedLabel').textContent=data.fanSpeed+'%';}document.getElementById('fanSlider').disabled=!data.fanEnabled;const fanIcon=document.getElementById('fanIcon');if(data.fanEnabled){fanIcon.classList.add('spinning');document.getElementById('btnFanOn').classList.add('active-on');document.getElementById('btnFanOff').classList.remove('active-off');}else{fanIcon.classList.remove('spinning');document.getElementById('btnFanOn').classList.remove('active-on');document.getElementById('btnFanOff').classList.add('active-off');}if(data.light1State){document.getElementById('light1Status').classList.add('light-active');document.getElementById('btnL1On').classList.add('active-on');document.getElementById('btnL1Off').classList.remove('active-off');}else{document.getElementById('light1Status').classList.remove('light-active');document.getElementById('btnL1On').classList.remove('active-on');document.getElementById('btnL1Off').classList.add('active-off');}if(data.light2State){document.getElementById('light2Status').classList.add('light-active');document.getElementById('btnL2On').classList.add('active-on');document.getElementById('btnL2Off').classList.remove('active-off');}else{document.getElementById('light2Status').classList.remove('light-active');document.getElementById('btnL2On').classList.remove('active-on');document.getElementById('btnL2Off').classList.add('active-off');}}async function listenForIRChanges(){while(true){try{const response=await fetch('/api/changed');if(response.ok){const data=await response.json();if(data.changed){updateUI(data);}}}catch(e){await new Promise(r=>setTimeout(r,2000));}}}async function toggleMemory(){let newState=!memoryEnabled;let endpoint=newState?'/api/memoryon':'/api/memoryoff';await fetch(endpoint);memoryEnabled=newState;document.getElementById('memBtn').classList.toggle('active-on',memoryEnabled);}async function toggleWiFiMode(){let newState=!wifiModeEnabled;let endpoint=newState?'/api/wifisafeon':'/api/wifisafeoff';await fetch(endpoint);wifiModeEnabled=newState;document.getElementById('wifiModeBtn').classList.toggle('active-on',wifiModeEnabled);}async function checkMqttAndReload(){try{let res=await fetch('/api/mqttstatus');let data=await res.json();if(data.connected){location.reload();}}catch(e){}}window.addEventListener('load',()=>{fetch('/api/memorystatus').then(r=>r.json()).then(d=>{memoryEnabled=d.enabled;if(memoryEnabled) document.getElementById('memBtn').classList.add('active-on');});fetch('/api/wifisafestatus').then(r=>r.json()).then(d=>{wifiModeEnabled=d.enabled;if(wifiModeEnabled) document.getElementById('wifiModeBtn').classList.add('active-on');});fetch('/api/status').then(r=>r.json()).then(d=>{updateUI(d);});listenForIRChanges();setInterval(checkMqttAndReload,3000);});</script></head><body><div class='container'><div class='header'>Smart Home</div><div class='card fan-card'><div class='card-title'>Fan Control</div><div class='fan-container'><svg id='fanIcon' class='fan-icon' viewBox='0 0 100 100'><circle cx='50' cy='50' r='6' fill='white'/><path d='M50 10 Q70 30 50 50 Q30 30 50 10'/><path d='M90 50 Q70 70 50 50 Q70 30 90 50'/><path d='M50 90 Q30 70 50 50 Q70 70 50 90'/><path d='M10 50 Q30 30 50 50 Q30 70 10 50'/></svg></div><div class='status' id='fanStatus'>Fan is OFF</div><div class='button-group'><button id='btnFanOn' class='btn-state' onclick='updateState(\"on\")'>On</button><button id='btnFanOff' class='btn-state' onclick='updateState(\"off\")'>Off</button></div><div class='slider-container'><div class='slider-label'><span>Speed</span><span id='speedLabel'>50%</span></div><input type='range' id='fanSlider' min='0' max='100' value='50' oninput='handleSliderChange(this.value)'></div></div><div class='card lights-card'><div class='card-title'>Lights Control</div><div class='light-item'><div class='light-label' id='light1Status'>Light 1: OFF</div><div class='button-group'><button id='btnL1On' class='btn-state' onclick='updateState(\"l1on\")'>On</button><button id='btnL1Off' class='btn-state' onclick='updateState(\"l1off\")'>Off</button></div></div><div class='light-item'><div class='light-label' id='light2Status'>Light 2: OFF</div><div class='button-group'><button id='btnL2On' class='btn-state' onclick='updateState(\"l2on\")'>On</button><button id='btnL2Off' class='btn-state' onclick='updateState(\"l2off\")'>Off</button></div></div></div><div class='card' style='padding:10px; margin-top:5px;'><div class='card-title'>System Settings</div><div class='button-group'><button id='memBtn' class='btn-state' onclick='toggleMemory()'>Memory Save</button><button id='wifiModeBtn' class='btn-state' onclick='toggleWiFiMode()'>WiFi Mode</button></div></div><div class='card wifi-card'><div class='btn-row'><button class='btn-wifi' onclick=\"location.href='/wifi'\">WiFi Setup</button><button class='btn-remote' onclick=\"location.href='/settings'\">Settings</button></div></div></div></body></html>";
@@ -558,7 +631,7 @@ void masterReset() {
   for (int i = 0; i < 32; i++) EEPROM.write(WIFI_SSID_ADDR + i, 0);
   for (int i = 0; i < 32; i++) EEPROM.write(WIFI_PASS_ADDR + i, 0);
   EEPROM.write(WIFI_SAFE_ADDR, 0);
-  EEPROM.write(MEMORY_SAVE_ADDR, 0);   // also clear memory save flag
+  EEPROM.write(MEMORY_SAVE_ADDR, 0);
   EEPROM.commit();
   server.send(200, "text/plain", "Resetting...");
   resetPending = true;
@@ -596,13 +669,11 @@ void settings() { server.send(200, "text/html", settingsPage()); }
 
 // ===== MQTT EVENT HANDLERS =====
 void onMqttConnect(bool sessionPresent) {
-  Serial.println("[MQTT] Connected to Broker!");
   mqttConnected = true;
   mqttClient.subscribe(mqttConfig.controlTopic, 1);
   publishMqttStatus();
 }
 void onMqttDisconnect(AsyncMqttClientDisconnectReason reason) {
-  Serial.println("[MQTT] Disconnected.");
   mqttConnected = false;
 }
 void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties properties, size_t len, size_t index, size_t total) {
@@ -610,8 +681,6 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
   memcpy(message, payload, len);
   message[len] = '\0';
   String cmd = String(message);
-  Serial.print("[MQTT] Received: ");
-  Serial.println(cmd);
   bool changed = false;
   if (cmd.startsWith("SPEED_")) {
     int val = cmd.substring(6).toInt();
@@ -660,7 +729,6 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
   }
 }
 void connectToMqtt() {
-  Serial.println("[MQTT] Connecting to Broker...");
   if (strlen(mqttConfig.user) > 0) {
     mqttClient.setCredentials(mqttConfig.user, mqttConfig.pass);
   }
@@ -684,26 +752,21 @@ void handleIR() {
     delayMicros -= 500;
     clampDelayMicros();
     targetHit = true;
-    Serial.println("[IR] Speed Down");
   } else if (code == irConfig.speedUp && delayMicros < MAX_DELAY) {
     delayMicros += 500;
     clampDelayMicros();
     targetHit = true;
-    Serial.println("[IR] Speed Up");
   } else if (code == irConfig.fanToggle) {
     fanEnabled = !fanEnabled;
     targetHit = true;
-    Serial.println("[IR] Fan Toggle");
   } else if (code == irConfig.light1Toggle) {
     light1State = !light1State;
     digitalWrite(LIGHT1_PIN, light1State);
     targetHit = true;
-    Serial.println("[IR] Light 1 Toggle");
   } else if (code == irConfig.light2Toggle) {
     light2State = !light2State;
     digitalWrite(LIGHT2_PIN, light2State);
     targetHit = true;
-    Serial.println("[IR] Light 2 Toggle");
   }
   if (targetHit) {
     updateEffectiveDelay();
@@ -727,13 +790,19 @@ void startWiFi() {
 
 // ===== SETUP =====
 void setup() {
-  Serial.begin(115200);
-  Serial.println("\n\n=== SMART HOME STARTING ===");
   EEPROM.begin(EEPROM_SIZE);
   pinMode(ZC_PIN, INPUT);
   pinMode(TRIAC_PIN, OUTPUT);
   pinMode(LIGHT1_PIN, OUTPUT);
   pinMode(LIGHT2_PIN, OUTPUT);
+  
+  // ===== বাটন পিন সেটআপ (ইন্টার্নাল পুল-আপ সহ) =====
+  pinMode(BTN_FAN_ON, INPUT_PULLUP);
+  pinMode(BTN_SPEED_UP, INPUT_PULLUP);
+  pinMode(BTN_SPEED_DOWN, INPUT_PULLUP);
+  pinMode(BTN_LIGHT1, INPUT_PULLUP);  // GPIO3/RX
+  pinMode(BTN_LIGHT2, INPUT_PULLUP);  // GPIO1/TX
+  
   digitalWrite(LIGHT1_PIN, LOW);
   digitalWrite(LIGHT2_PIN, LOW);
   digitalWrite(TRIAC_PIN, LOW);
@@ -742,17 +811,17 @@ void setup() {
   timer1_attachInterrupt(onTimerISR);
   
   irrecv.enableIRIn();
-loadWiFi();
-loadMQTTConfig();
-loadMemorySave();               // Load memory save flag FIRST
-loadState();                    // Then load state (will use memorySaveEnabled flag)
-loadIRConfig();
-loadWiFiSafe();              // load persistent memory save flag
+  loadWiFi();
+  loadMQTTConfig();
+  loadMemorySave();
+  loadState();
+  loadIRConfig();
+  loadWiFiSafe();
   startWiFi();
-if (wifiSafeEnabled) {
-  wifiConnectStartTime = millis();
-  wifi_station_connect();
-}
+  if (wifiSafeEnabled) {
+    wifiConnectStartTime = millis();
+    wifi_station_connect();
+  }
   applySavedStates();
   updateEffectiveDelay();
   MDNS.begin("smarthome");
@@ -787,7 +856,6 @@ if (wifiSafeEnabled) {
   server.on("/api/mqttstatus", apiMqttStatus);
   server.on("/api/masterreset", handleMasterReset);
   server.begin();
-  Serial.println("=== READY ===");
 }
 
 void loop() {
@@ -801,6 +869,13 @@ void loop() {
     lastIRCheckTime = currentMillis;
     handleIR();
   }
+  
+  // ===== বাটন চেক =====
+  if (currentMillis - lastButtonCheckTime >= BUTTON_CHECK_INTERVAL) {
+    lastButtonCheckTime = currentMillis;
+    handleButtons();
+  }
+  
   commitStateIfPending();
 
   if (memorySaveEnabled && stateDirty) {
@@ -808,14 +883,12 @@ void loop() {
     stateDirty = false;
   }
 
-if (wifiSafeEnabled && WiFi.status() != WL_CONNECTED) {
-  if (wifiConnectStartTime == 0) wifiConnectStartTime = millis();
-  // Keep trying forever - no timeout
-}
-if (WiFi.status() == WL_CONNECTED) {
-  wifiConnectStartTime = 0;
-}
-  if (WiFi.status() == WL_CONNECTED) wifiConnectStartTime = 0;
+  if (wifiSafeEnabled && WiFi.status() != WL_CONNECTED) {
+    if (wifiConnectStartTime == 0) wifiConnectStartTime = millis();
+  }
+  if (WiFi.status() == WL_CONNECTED) {
+    wifiConnectStartTime = 0;
+  }
 
   if (WiFi.status() == WL_CONNECTED && !mqttClient.connected()) {
     if (currentMillis - lastMqttRetryTime >= MQTT_RETRY_INTERVAL) {
@@ -834,7 +907,7 @@ if (WiFi.status() == WL_CONNECTED) {
   }
 
   server.handleClient();
-
+  
   if (currentMillis - lastMDNSUpdateTime >= MDNS_UPDATE_INTERVAL) {
     lastMDNSUpdateTime = currentMillis;
     MDNS.update();
